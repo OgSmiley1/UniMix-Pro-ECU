@@ -1,0 +1,9 @@
+{
+  "name": "UniMix Pro ECU Tuner",
+  "description": "High-performance ECU tuning suite with real-time CAN-Bus telemetry and AI optimization.",
+  "requestFramePermissions": [
+    "geolocation",
+    "microphone",
+    "camera"
+  ]
+}
