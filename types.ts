@@ -19,6 +19,8 @@ export interface Telemetry {
   timestamp: number;
 }
 
+export type HardwareChip = 'Standard' | 'UniMix V2 Core' | 'Quantum-CAN X1';
+
 export interface TuneSettings {
   afrTarget: number;
   boostLimit: number;
@@ -26,6 +28,10 @@ export interface TuneSettings {
   fuelCorrection: number;
   timingRetardPerPsi: number;
   revLimit: number;
+  crackleIntensity: number; // 0-100 for popcorn backfire intensity
+  chipType: HardwareChip;
+  topSpeedLimit: number;
+  globalOffset: number; // Overall scaling factor
 }
 
 export interface VehicleProfile {
@@ -38,7 +44,9 @@ export interface VehicleProfile {
   vinPrefix: string;
   ecuType: string;
   displacement: number;
+  induction: 'Turbo' | 'Supercharged' | 'N/A';
   turboSize: string;
+  peakTorque: string;
 }
 
-export type AppTab = 'dashboard' | 'tune' | 'maps' | 'logs' | 'dtc' | 'settings';
+export type AppTab = 'dashboard' | 'tune' | 'maps' | 'logs' | 'dtc' | 'settings' | 'files';

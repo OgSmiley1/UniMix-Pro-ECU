@@ -4,6 +4,7 @@
   "requestFramePermissions": [
     "geolocation",
     "microphone",
-    "camera"
+    "camera",
+    "bluetooth"
   ]
 }

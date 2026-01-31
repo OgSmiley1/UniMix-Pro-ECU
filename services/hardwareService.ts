@@ -6,19 +6,22 @@ export class HardwareService {
   private isBusy = false;
   private isSimulated = false;
 
-  // Standard Bluetooth Serial Port UUID (Common for ELM327)
   private static readonly SERIAL_UUID = '00001101-0000-1000-8000-00805f9b34fb';
 
   async connect(): Promise<boolean> {
-    // If the browser doesn't support Bluetooth or we want to test, we fall back to simulation
     const nav = navigator as any;
+    
+    // Simulate initial connection delay
+    await new Promise(r => setTimeout(r, 1200));
+
+    // Check for Bluetooth availability and potential Permission Policy restrictions
     if (!nav.bluetooth) {
-      console.warn("Web Bluetooth not supported. Falling back to High-Fidelity Simulation.");
-      this.isSimulated = true;
+      this.startSimulatedMode("Web Bluetooth API not detected.");
       return true;
     }
 
     try {
+      // Robust connection attempt with specific handling for Policy/Security errors
       this.device = await nav.bluetooth.requestDevice({
         filters: [{ services: [HardwareService.SERIAL_UUID] }],
         optionalServices: [HardwareService.SERIAL_UUID]
@@ -28,25 +31,45 @@ export class HardwareService {
       const service = await this.server.getPrimaryService(HardwareService.SERIAL_UUID);
       this.characteristic = await service.getCharacteristic(HardwareService.SERIAL_UUID);
 
-      // Professional Initialization Sequence
-      await this.sendCommand('AT Z');    // Warm reset
-      await this.sendCommand('AT SP 0'); // Auto protocol search
-      await this.sendCommand('01 00');   // Query supported PIDs
+      await this.sendCommand('AT Z');    
+      await this.sendCommand('AT SP 0'); 
+      await this.sendCommand('01 00');   
       
       this.isSimulated = false;
+      this.logToTerminal("PHYSICAL_LINK_ESTABLISHED_ISO15765");
       return true;
-    } catch (error) {
-      console.error("Hardware Link Refused:", error);
-      // Auto-fallback for testing purposes
-      this.isSimulated = true;
-      return true; 
+    } catch (error: any) {
+      console.error("Hardware link error:", error);
+      
+      // Detailed error logging for diagnostics
+      let reason = "Hardware link failed.";
+      if (error.name === 'SecurityError' || error.message?.includes('permissions policy')) {
+        reason = "Bluetooth restricted by Browser Permissions Policy.";
+      } else if (error.name === 'NotFoundError') {
+        reason = "No hardware device selected by user.";
+      }
+
+      this.startSimulatedMode(reason);
+      return true; // Return true to allow app usage even in simulation
     }
   }
 
+  private startSimulatedMode(reason: string) {
+    console.warn(`Hardware: Falling back to Simulation. Reason: ${reason}`);
+    this.isSimulated = true;
+    this.logToTerminal(`INIT_VIRTUAL_ECU_BRIDGE_SUCCESS // ${reason}`);
+  }
+
+  private logToTerminal(cmd: string) {
+    window.dispatchEvent(new CustomEvent('can-bus-tx', { 
+      detail: { cmd, timestamp: Date.now() } 
+    }));
+  }
+
   async sendCommand(cmd: string): Promise<string> {
+    this.logToTerminal(cmd);
+    
     if (this.isSimulated) {
-      // Broadcast command to the LiveTerminal via custom event
-      window.dispatchEvent(new CustomEvent('can-bus-tx', { detail: { cmd, timestamp: Date.now() } }));
       return "OK";
     }
 
@@ -92,6 +115,7 @@ export class HardwareService {
     }
     this.device = null;
     this.characteristic = null;
+    this.logToTerminal("LINK_TERMINATED");
   }
 }
 

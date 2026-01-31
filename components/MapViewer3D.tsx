@@ -4,13 +4,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 interface MapViewerProps {
   currentRpm: number;
   currentLoad: number;
+  profileId: string;
 }
 
-const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad }) => {
+const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad, profileId }) => {
   const [activeMap, setActiveMap] = useState<'fuel' | 'ignition'>('fuel');
   const [selectedCell, setSelectedCell] = useState<{ r: number, c: number } | null>(null);
   const [isLiveTracing, setIsLiveTracing] = useState(true);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const initializeGrid = (type: 'fuel' | 'ignition') => {
     return Array.from({ length: 16 }, (_, r) =>
@@ -43,6 +43,19 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad }) => {
     updateCellValue(currentVal + delta, selectedCell.r, selectedCell.c);
   }, [grid, selectedCell, updateCellValue]);
 
+  const applyAcuraTune = () => {
+    const optimized = grid.map((row, r) => 
+      row.map((cell, c) => {
+        const load = (15 - r) * 6.6;
+        if (load > 60) return activeMap === 'fuel' ? 11.5 : cell + 2.0;
+        return cell;
+      })
+    );
+    if (activeMap === 'fuel') setFuelGrid(optimized);
+    else setIgnGrid(optimized);
+    alert("Acura Precision Calibration Applied Successfully.");
+  };
+
   const getCellColor = (val: number) => {
     if (activeMap === 'fuel') {
       if (val < 11.5) return 'rgba(239, 68, 68, 0.9)';
@@ -57,20 +70,28 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad }) => {
 
   const loadIndex = 15 - Math.floor(Math.min(currentLoad / 6.6, 15));
   const rpmIndex = Math.floor(Math.min(currentRpm / 500, 15));
-  const currentLiveValue = grid[loadIndex][rpmIndex];
+  const currentLiveValue = grid[loadIndex]?.[rpmIndex] || 0;
 
   return (
     <div className="flex flex-col h-full bg-[#050505] text-white p-4 md:p-6 gap-6 overflow-hidden pb-24 md:pb-6 font-sans">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter leading-none flex items-center gap-3">
-            <i className="fas fa-microchip text-purple-500"></i>
+            <i className="fas fa-border-all text-purple-500"></i>
             Map Editor
           </h2>
           <p className="text-[10px] text-gray-500 font-mono mt-1 tracking-widest uppercase italic">X: RPM | Y: Load [%]</p>
         </div>
 
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto no-scrollbar">
+          {profileId === 'acura-nsx-s' && (
+             <button 
+               onClick={applyAcuraTune}
+               className="px-6 py-2 bg-red-600/10 text-red-500 border border-red-500/30 rounded-xl font-black text-[9px] uppercase tracking-widest shrink-0 hover:bg-red-600 hover:text-white transition-all"
+             >
+               <i className="fas fa-magic mr-2"></i> Acura Precision Tune
+             </button>
+          )}
           <div className="bg-black/40 border border-gray-800 p-1 rounded-xl flex shadow-inner shrink-0">
             <button 
               onClick={() => setActiveMap('fuel')}
@@ -95,9 +116,8 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad }) => {
       </div>
 
       <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-hidden">
-        {/* Main Grid Scroll Container */}
-        <div className="flex-1 glass rounded-[2rem] md:rounded-[2.5rem] border border-gray-800/40 p-2 md:p-4 overflow-auto scrollbar-hide relative shadow-2xl">
-          <div className="min-w-[600px] h-full flex flex-col">
+        <div className="flex-1 glass rounded-[2.5rem] border border-gray-800/40 p-2 md:p-4 overflow-auto no-scrollbar relative shadow-2xl">
+          <div className="min-w-[800px] h-full flex flex-col">
             <div className="grid grid-cols-17 gap-0.5">
               <div className="h-8"></div>
               {Array.from({length: 16}).map((_, i) => (
@@ -121,7 +141,7 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad }) => {
                         style={{ backgroundColor: getCellColor(val) }}
                         className={`
                           h-8 rounded-sm flex items-center justify-center text-[9px] font-mono font-black cursor-pointer transition-all relative
-                          ${isSelected ? 'ring-2 ring-white z-20 scale-110 brightness-125' : 'opacity-80 hover:opacity-100'}
+                          ${isSelected ? 'ring-2 ring-white z-20 scale-110 brightness-125 shadow-xl' : 'opacity-80 hover:opacity-100'}
                           ${isTracer ? 'ring-1 ring-purple-400 ring-offset-1 ring-offset-black z-10' : ''}
                         `}
                       >
@@ -136,8 +156,7 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad }) => {
           </div>
         </div>
 
-        {/* Sidebar Controls */}
-        <div className="w-full md:w-80 flex flex-col gap-4 overflow-y-auto">
+        <div className="w-full md:w-80 flex flex-col gap-4 overflow-y-auto no-scrollbar">
           {selectedCell ? (
             <div className="glass p-5 rounded-[2rem] border border-gray-800 shadow-xl space-y-4">
               <h3 className="text-[10px] font-black uppercase text-gray-500 tracking-widest flex items-center gap-2">
@@ -164,21 +183,22 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad }) => {
               </div>
 
               <button 
-                onClick={() => alert("Hardware Calibration Map Updated Successfully.")}
+                onClick={() => alert("Calibration Write Sequence Initiated...")}
                 className="w-full py-4 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all"
               >
                 Write to RAM
               </button>
             </div>
           ) : (
-            <div className="glass p-8 rounded-[2rem] border-2 border-dashed border-gray-800/50 text-center">
-              <p className="text-[9px] uppercase font-black tracking-[0.2em] text-gray-700">Select cell to calibrate</p>
+            <div className="glass p-8 rounded-[2.5rem] border-2 border-dashed border-gray-800/50 text-center flex items-center justify-center flex-col gap-4">
+              <i className="fas fa-mouse-pointer text-gray-800 text-xl"></i>
+              <p className="text-[9px] uppercase font-black tracking-[0.2em] text-gray-700">Select map cell to begin live calibration</p>
             </div>
           )}
           
           <div className="glass p-5 rounded-[2rem] border border-gray-800">
              <div className="flex justify-between items-center mb-4">
-               <span className="text-[9px] font-black uppercase text-gray-600">Tracer Logic</span>
+               <span className="text-[9px] font-black uppercase text-gray-600">Tracer Matrix</span>
                <span className="text-[10px] font-mono text-emerald-400 font-bold">{currentLiveValue.toFixed(2)}</span>
              </div>
              <div className="grid grid-cols-2 gap-3 text-center">
