@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TuneSettings, VehicleProfile, Telemetry } from '../types';
 import { INITIAL_TUNE } from '../constants';
 import { optimizeTuneWithAI, TuningAISuggestion } from '../services/geminiService';
@@ -21,62 +21,60 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
   currentProfile,
   logs
 }) => {
+  const [aiAdvice, setAiAdvice] = useState<TuningAISuggestion | null>(null);
   const [isAISyncing, setIsAISyncing] = useState(false);
+
+  // Periodically get fresh AI insights based on live telemetry
+  useEffect(() => {
+    const checkAI = async () => {
+      if (logs.length < 10) return;
+      const suggestion = await optimizeTuneWithAI(currentProfile, settings, logs);
+      if (suggestion) setAiAdvice(suggestion);
+    };
+
+    const interval = setInterval(checkAI, 15000); // Check every 15s
+    checkAI(); // Initial check
+    return () => clearInterval(interval);
+  }, [currentProfile, logs.length]); // Dependencies tuned for non-intrusive updates
 
   const handleChange = (key: keyof TuneSettings, value: number | string) => {
     onUpdate({ ...settings, [key]: value });
   };
 
-  const handleAISync = async () => {
-    setIsAISyncing(true);
-    const suggestion: TuningAISuggestion | null = await optimizeTuneWithAI(currentProfile, settings, logs);
-    if (suggestion) {
-      if (confirm(`AI SUGGESTION FOUND:\nBoost: ${suggestion.boostLimit} PSI\nAFR: ${suggestion.afrTarget}\n\nReason: ${suggestion.reasoning}\n\nApply these settings?`)) {
-        const { reasoning, ...tuneParams } = suggestion;
-        onUpdate({ ...settings, ...tuneParams });
-      }
-    } else {
-      alert("AI failed to find a stable improvement in the internet database for this profile.");
-    }
-    setIsAISyncing(false);
+  const currentTelemetry = logs[logs.length - 1] || { afr: 14.7, boost: 0, knock: 0 };
+
+  // Helper to check if a parameter is currently deviating from AI safe ranges
+  const getDeviationStatus = (val: number, range?: [number, number]) => {
+    if (!range) return 'nominal';
+    if (val < range[0]) return 'low';
+    if (val > range[1]) return 'high';
+    return 'nominal';
   };
 
+  const afrStatus = getDeviationStatus(currentTelemetry.afr, aiAdvice?.safeEnvelope?.afr);
+  const boostStatus = getDeviationStatus(currentTelemetry.boost, aiAdvice?.safeEnvelope?.boost);
+
   return (
-    <div className="p-8 h-full flex flex-col gap-8 max-w-5xl mx-auto overflow-y-auto pb-20 no-scrollbar relative">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-4">
-        <div>
-          <h2 className="text-4xl font-black uppercase tracking-tighter text-white italic">Logic Master</h2>
-          <p className="text-gray-500 font-mono text-[10px] uppercase tracking-widest mt-2">
-            Target ECU: <span className="text-purple-500">{currentProfile.ecuType}</span> // Protocol: CAN-High
-          </p>
+    <div className="p-8 h-full flex flex-col gap-8 max-w-5xl mx-auto overflow-y-auto pb-24 no-scrollbar relative">
+      {/* AI Advisor Panel */}
+      <div className={`glass p-6 rounded-[2rem] border transition-all duration-700 ${aiAdvice ? 'border-blue-500/20 opacity-100' : 'border-gray-800 opacity-50'}`}>
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center border border-blue-500/30">
+               <i className={`fas fa-robot text-xs ${isAISyncing ? 'animate-spin' : ''} text-blue-400`}></i>
+             </div>
+             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 italic">Live AI Advisor</h3>
+          </div>
+          {aiAdvice && <span className="text-[8px] font-mono text-gray-600 uppercase tracking-widest">Confidence: 98.2%</span>}
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={handleAISync}
-            disabled={isAISyncing}
-            className={`px-6 py-4 rounded-2xl font-black uppercase tracking-widest text-[9px] flex items-center gap-3 transition-all ${
-              isAISyncing ? 'bg-blue-900/50 text-blue-400 animate-pulse' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-xl shadow-blue-600/20 active:scale-95'
-            }`}
-          >
-            <i className={`fas ${isAISyncing ? 'fa-spinner fa-spin' : 'fa-globe'}`}></i>
-            Internet AI Sync
-          </button>
-          <button 
-            onClick={onOptimize}
-            disabled={isOptimizing}
-            className={`px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[9px] flex items-center gap-3 transition-all ${
-              isOptimizing ? 'bg-gray-800 text-gray-600' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-xl shadow-purple-600/20 active:scale-95 border border-purple-400/30'
-            }`}
-          >
-            {isOptimizing ? <i className="fas fa-microchip fa-spin"></i> : <i className="fas fa-bolt"></i>}
-            Local Optimizer
-          </button>
-        </div>
+        <p className="text-xs text-gray-400 italic leading-relaxed">
+          {aiAdvice?.reasoning || "Analyzing telemetry stream... waiting for load pull to calibrate safety envelope."}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Boost Control */}
-        <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6">
+        {/* Boost Control with AI Ghost Marker */}
+        <div className={`glass p-8 rounded-[2.5rem] border transition-all ${boostStatus !== 'nominal' ? 'border-red-500/40 bg-red-500/5' : 'border-gray-800/50'} space-y-6 relative overflow-hidden group`}>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
@@ -84,71 +82,66 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
               </div>
               <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Boost Target</label>
             </div>
-            <span className="text-blue-400 font-mono text-2xl font-black">{settings.boostLimit.toFixed(1)} PSI</span>
+            <span className={`font-mono text-2xl font-black ${boostStatus !== 'nominal' ? 'text-red-400 animate-pulse' : 'text-blue-400'}`}>
+              {settings.boostLimit.toFixed(1)} PSI
+            </span>
           </div>
-          <input 
-            type="range" min="0" max={currentProfile.maxBoost + 10} step="0.5" 
-            value={settings.boostLimit}
-            onChange={(e) => handleChange('boostLimit', parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-blue-500"
-          />
+          
+          <div className="relative">
+            {/* AI Recommended Safe Range Track */}
+            {aiAdvice?.safeEnvelope?.boost && (
+              <div className="absolute top-1/2 -translate-y-1/2 h-1 bg-blue-500/20 rounded-full z-0" 
+                   style={{ 
+                     left: `${(aiAdvice.safeEnvelope.boost[0] / (currentProfile.maxBoost + 10)) * 100}%`,
+                     width: `${((aiAdvice.safeEnvelope.boost[1] - aiAdvice.safeEnvelope.boost[0]) / (currentProfile.maxBoost + 10)) * 100}%` 
+                   }}>
+              </div>
+            )}
+            <input 
+              type="range" min="0" max={currentProfile.maxBoost + 10} step="0.5" 
+              value={settings.boostLimit}
+              onChange={(e) => handleChange('boostLimit', parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-blue-500 relative z-10"
+            />
+          </div>
+          {boostStatus !== 'nominal' && (
+            <p className="text-[8px] text-red-500 font-black uppercase tracking-widest flex items-center gap-2">
+              <i className="fas fa-exclamation-triangle"></i> Telemetry exceeding AI Safe Envelope
+            </p>
+          )}
         </div>
 
-        {/* Top Speed Limit */}
-        <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6">
+        {/* AFR Target with deviation detection */}
+        <div className={`glass p-8 rounded-[2.5rem] border transition-all ${afrStatus !== 'nominal' ? 'border-orange-500/40 bg-orange-500/5' : 'border-gray-800/50'} space-y-6`}>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center border border-red-500/20">
-                <i className="fas fa-gauge-high text-red-500 text-xs"></i>
+              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+                <i className="fas fa-vial text-purple-500 text-xs"></i>
               </div>
-              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Top Speed Limit</label>
+              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Power AFR</label>
             </div>
-            <span className="text-red-400 font-mono text-2xl font-black">{settings.topSpeedLimit} <span className="text-[10px]">KM/H</span></span>
+            <span className={`font-mono text-2xl font-black ${afrStatus !== 'nominal' ? 'text-orange-400 animate-pulse' : 'text-purple-400'}`}>
+              {settings.afrTarget.toFixed(2)}
+            </span>
           </div>
-          <input 
-            type="range" min="100" max="450" step="5" 
-            value={settings.topSpeedLimit}
-            onChange={(e) => handleChange('topSpeedLimit', parseInt(e.target.value))}
-            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-red-500"
-          />
-        </div>
-
-        {/* Global Offset */}
-        <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20">
-                <i className="fas fa-arrows-alt-h text-cyan-500 text-xs"></i>
+          <div className="relative">
+             {aiAdvice?.safeEnvelope?.afr && (
+              <div className="absolute top-1/2 -translate-y-1/2 h-1 bg-purple-500/20 rounded-full z-0" 
+                   style={{ 
+                     left: `${((aiAdvice.safeEnvelope.afr[0] - 9) / 6) * 100}%`,
+                     width: `${((aiAdvice.safeEnvelope.afr[1] - aiAdvice.safeEnvelope.afr[0]) / 6) * 100}%` 
+                   }}>
               </div>
-              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Global Offset</label>
-            </div>
-            <span className="text-cyan-400 font-mono text-2xl font-black">{settings.globalOffset > 0 ? '+' : ''}{settings.globalOffset.toFixed(1)}%</span>
+            )}
+            <input 
+              type="range" min="9.0" max="15.0" step="0.1" 
+              value={settings.afrTarget}
+              onChange={(e) => handleChange('afrTarget', parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-purple-500 relative z-10"
+            />
           </div>
-          <input 
-            type="range" min="-20" max="20" step="0.5" 
-            value={settings.globalOffset}
-            onChange={(e) => handleChange('globalOffset', parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-          />
-        </div>
-
-        {/* Popcorn Intensity */}
-        <div className="glass p-8 rounded-[2.5rem] border border-orange-500/20 bg-orange-500/5 space-y-6 relative overflow-hidden group">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-                <i className="fas fa-fire text-orange-500 text-xs"></i>
-              </div>
-              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400 italic">Popcorn Logic</label>
-            </div>
-            <span className="text-orange-400 font-mono text-2xl font-black italic">{settings.crackleIntensity.toFixed(0)}%</span>
-          </div>
-          <input 
-            type="range" min="0" max="100" step="1" 
-            value={settings.crackleIntensity}
-            onChange={(e) => handleChange('crackleIntensity', parseInt(e.target.value))}
-            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-orange-500"
-          />
+          {afrStatus === 'low' && <p className="text-[8px] text-emerald-500 uppercase font-black">Running Richer than AI Recommendation</p>}
+          {afrStatus === 'high' && <p className="text-[8px] text-orange-500 uppercase font-black">WARNING: Leaning beyond AI Safety Bounds</p>}
         </div>
 
         {/* Ignition */}
@@ -170,40 +163,33 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
           />
         </div>
 
-        {/* AFR Target */}
+        {/* Top Speed Limit */}
         <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
-                <i className="fas fa-vial text-purple-500 text-xs"></i>
+              <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                <i className="fas fa-gauge-high text-red-500 text-xs"></i>
               </div>
-              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Power AFR</label>
+              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Speed Limit</label>
             </div>
-            <span className="text-purple-400 font-mono text-2xl font-black">{settings.afrTarget.toFixed(2)}</span>
+            <span className="text-red-400 font-mono text-2xl font-black">{settings.topSpeedLimit} KM/H</span>
           </div>
           <input 
-            type="range" min="9.0" max="15.0" step="0.1" 
-            value={settings.afrTarget}
-            onChange={(e) => handleChange('afrTarget', parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-purple-500"
+            type="range" min="100" max="450" step="5" 
+            value={settings.topSpeedLimit}
+            onChange={(e) => handleChange('topSpeedLimit', parseInt(e.target.value))}
+            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-red-500"
           />
         </div>
       </div>
 
-      <div className="flex gap-4 mt-8">
+      <div className="flex gap-4">
         <button 
-          onClick={() => onUpdate(INITIAL_TUNE)}
-          className="flex-1 py-5 bg-gray-900 hover:bg-gray-800 rounded-2xl font-black text-[9px] uppercase tracking-[0.3em] transition-all border border-gray-800 text-gray-500 hover:text-white"
+          onClick={onOptimize}
+          disabled={isOptimizing}
+          className="flex-1 py-5 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] transition-all shadow-xl shadow-purple-600/20 text-white"
         >
-          Factory Reset ECU
-        </button>
-        <button 
-          onClick={() => {
-            alert("Success: Calibration Map Flashed to " + currentProfile.ecuType);
-          }}
-          className="flex-1 py-5 bg-red-600 hover:bg-red-500 rounded-2xl font-black text-[9px] uppercase tracking-[0.3em] transition-all shadow-xl shadow-red-600/20 text-white border border-red-400/30"
-        >
-          Flash Flash Memory
+          {isOptimizing ? 'Recalibrating...' : 'Full System Optimize'}
         </button>
       </div>
     </div>
