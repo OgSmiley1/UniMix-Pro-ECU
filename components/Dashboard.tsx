@@ -1,11 +1,52 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import Gauge from './Gauge';
-import { Telemetry } from '../types';
+import { Telemetry, VehicleProfile } from '../types';
+import { evaluateSafety, SafetyAlert } from '../services/safetyMonitor';
 
 interface DashboardProps {
   telemetry: Telemetry;
+  profile: VehicleProfile;
 }
+
+const ALERT_STYLES: Record<SafetyAlert['severity'], { border: string; bg: string; text: string; icon: string }> = {
+  critical: { border: 'border-red-500/50', bg: 'bg-red-500/10', text: 'text-red-400', icon: 'fa-triangle-exclamation' },
+  warning: { border: 'border-amber-500/40', bg: 'bg-amber-500/5', text: 'text-amber-400', icon: 'fa-circle-exclamation' },
+  info: { border: 'border-blue-500/30', bg: 'bg-blue-500/5', text: 'text-blue-400', icon: 'fa-circle-info' },
+};
+
+const SafetyBanner: React.FC<{ alerts: SafetyAlert[]; hasLiveData: boolean }> = ({ alerts, hasLiveData }) => {
+  if (!hasLiveData) return null;
+
+  if (alerts.length === 0) {
+    return (
+      <div className="mx-4 md:mx-10 mt-4 px-5 py-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 flex items-center gap-3">
+        <i className="fas fa-shield-check text-emerald-500 text-xs"></i>
+        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">All monitored parameters nominal</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-4 md:mx-10 mt-4 space-y-2">
+      {alerts.map(alert => {
+        const style = ALERT_STYLES[alert.severity];
+        return (
+          <div
+            key={alert.id}
+            className={`px-5 py-3 rounded-2xl border ${style.border} ${style.bg} flex items-start gap-3 ${alert.severity === 'critical' ? 'animate-pulse' : ''}`}
+          >
+            <i className={`fas ${style.icon} ${style.text} text-xs mt-0.5`}></i>
+            <div>
+              <span className={`text-[8px] font-black uppercase tracking-[0.2em] ${style.text} block mb-0.5`}>{alert.severity}</span>
+              <span className="text-xs text-gray-300 leading-relaxed">{alert.message}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 // A subtle value component that pulses whenever the value changes
 const LiveValue: React.FC<{ value: string | number; colorClass?: string }> = ({ value, colorClass = "text-white" }) => {
@@ -30,7 +71,7 @@ const LiveValue: React.FC<{ value: string | number; colorClass?: string }> = ({ 
 
 const fmt = (v: number | null, digits = 0) => v === null ? 'N/A' : v.toFixed(digits);
 
-const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
+const Dashboard: React.FC<DashboardProps> = ({ telemetry, profile }) => {
   const getAfrColor = (afr: number | null) => {
     if (afr === null) return "#3f3f46";
     if (afr < 11.5) return "#ef4444";
@@ -38,12 +79,17 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
     return "#10b981";
   };
 
+  const hasLiveData = telemetry.rpm !== null || telemetry.speed !== null || telemetry.coolantTemp !== null || telemetry.throttle !== null;
+  const alerts = useMemo(() => evaluateSafety(telemetry, profile), [telemetry, profile]);
+
   return (
     <div className="flex flex-col h-full bg-[#020202] pb-24 md:pb-8 font-sans overflow-y-auto no-scrollbar scanline relative">
       {/* Subtle Data Stream Indicator at the very top */}
       <div className="w-full h-0.5 bg-gray-900/20 relative overflow-hidden">
         <div className="absolute top-0 left-0 h-full w-24 bg-gradient-to-r from-transparent via-purple-500 to-transparent animate-[scanline_2s_linear_infinite]"></div>
       </div>
+
+      <SafetyBanner alerts={alerts} hasLiveData={hasLiveData} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 p-4 md:p-10 z-10">
         <div className="flex justify-center transform hover:scale-105 transition-all duration-500">

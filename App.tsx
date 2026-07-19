@@ -255,7 +255,7 @@ const App: React.FC = () => {
            </div>
         </header>
         <div className="flex-1 overflow-y-auto bg-grid-layout no-scrollbar">
-          {activeTab === 'dashboard' && <Dashboard telemetry={telemetry} />}
+          {activeTab === 'dashboard' && <Dashboard telemetry={telemetry} profile={currentProfile} />}
           {activeTab === 'tune' && (
             <TuneEditor
               settings={tune}
