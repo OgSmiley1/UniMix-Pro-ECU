@@ -1,72 +1,56 @@
 
 import { Telemetry, TuneSettings, VehicleProfile } from "../types";
 
+const BAROMETRIC_FALLBACK_KPA = 101.3; // sea-level standard, used only if PID 0x33 isn't supported
+
 export const TuningLogic = {
-  VOLTAGE_MIN: 0.5,
-  VOLTAGE_MAX: 4.5,
-  PSI_MAX: 30.0,
+  kpaToPsi: (kpa: number) => kpa * 0.145038,
 
-  voltageToPsi: (v: number) => (v - 0.5) * (30.0 / 4.0),
-  psiToVoltage: (psi: number) => 0.5 + (psi * (4.0 / 30.0)),
-
-  interceptMapSignal: (originalVoltage: number, boostTarget: number): number => {
-    const originalPsi = TuningLogic.voltageToPsi(originalVoltage);
-    if (originalPsi > boostTarget && boostTarget > 0) {
-      return TuningLogic.psiToVoltage(boostTarget);
-    }
-    return originalVoltage;
-  },
+  /** Boost = MAP - ambient pressure, converted to PSI. Uses a measured barometric reading when available, else the sea-level standard as an approximation. */
+  calculateBoostPsi: (mapKpa: number, baroKpa: number | null): number =>
+    TuningLogic.kpaToPsi(mapKpa - (baroKpa ?? BAROMETRIC_FALLBACK_KPA)),
 
   calculateFuelTrim: (currentAfr: number, targetAfr: number): number => {
     const error = currentAfr - targetAfr;
-    const pGain = 1.4; 
+    const pGain = 1.4;
     const correction = (error / targetAfr) * 100 * pGain;
     return Math.max(Math.min(correction, 25), -15);
   },
 
+  /** Local (non-AI) heuristic recommendations from real logged telemetry. Entries with missing (null) readings are skipped rather than treated as zero. */
   optimizeLocally: (logs: Telemetry[], current: TuneSettings, profile: VehicleProfile): Partial<TuneSettings> => {
-    if (logs.length < 5) return {};
-
-    const powerLogs = logs.filter(l => l.throttle > 50);
-    const targetLogs = powerLogs.length > 0 ? powerLogs : logs;
+    const withAfr = logs.filter((l): l is Telemetry & { afr: number; throttle: number } => l.afr !== null && l.throttle !== null);
+    const powerLogs = withAfr.filter(l => l.throttle > 50);
+    const targetLogs = powerLogs.length > 0 ? powerLogs : withAfr;
+    if (targetLogs.length < 5) return {};
 
     const avgAfr = targetLogs.reduce((acc, l) => acc + l.afr, 0) / targetLogs.length;
-    const maxKnock = Math.max(...targetLogs.map(l => l.knock));
-    const avgIAT = targetLogs.reduce((acc, l) => acc + l.iat, 0) / targetLogs.length;
+    const iatLogs = logs.filter((l): l is Telemetry & { iat: number } => l.iat !== null);
+    const avgIAT = iatLogs.length > 0 ? iatLogs.reduce((acc, l) => acc + l.iat, 0) / iatLogs.length : null;
 
     let suggestions: Partial<TuneSettings> = {};
 
-    // Chip-Specific Performance Multipliers
-    const chipMulti = current.chipType === 'Quantum-CAN X1' ? 1.2 : 1.0;
-
     // 1. PROFILE SPECIFIC CALIBRATION
     if (profile.id === 'toyota-2000gt-500') {
-      // 2JZ Logic: High boost tolerance, requires specific AFR enrichment
       suggestions.afrTarget = 11.2;
-      if (avgIAT < 40) suggestions.boostLimit = Math.min(current.boostLimit + 1.5 * chipMulti, 22);
+      if (avgIAT !== null && avgIAT < 40) suggestions.boostLimit = Math.min(current.boostLimit + 1.5, 22);
     } else if (profile.id === 'acura-nsx-s') {
-      // NSX Hybrid: Thermal constraints on twin-turbo, enrichment for battery cooling
       suggestions.afrTarget = 11.5;
-      if (avgIAT > 50) suggestions.ignitionOffset = current.ignitionOffset - 2.0;
+      if (avgIAT !== null && avgIAT > 50) suggestions.ignitionOffset = current.ignitionOffset - 2.0;
     } else if (profile.induction === 'Supercharged') {
-      if (avgIAT > 52) {
-         suggestions.afrTarget = Math.min(current.afrTarget, profile.safeAFR);
-         suggestions.ignitionOffset = current.ignitionOffset - 1.5;
+      if (avgIAT !== null && avgIAT > 52) {
+        suggestions.afrTarget = Math.min(current.afrTarget, profile.safeAFR);
+        suggestions.ignitionOffset = current.ignitionOffset - 1.5;
       }
     }
 
-    // 2. KNOCK PROTECTION
-    if (maxKnock > 0.8) {
-      suggestions.ignitionOffset = (suggestions.ignitionOffset || current.ignitionOffset) - (3.0 / chipMulti);
+    // 2. FUEL TYPE ADAPTATION
+    if (profile.fuelType === 'E85') {
+      suggestions.ignitionOffset = (suggestions.ignitionOffset ?? current.ignitionOffset) + 1.0;
     }
 
-    // 3. FUEL TYPE ADAPTATION
-    if (profile.fuelType === 'E85' && maxKnock < 0.2) {
-       suggestions.ignitionOffset = (suggestions.ignitionOffset || current.ignitionOffset) + 1.0;
-    }
-
-    // 4. AFR ERROR CORRECTION
-    const afrError = avgAfr - (suggestions.afrTarget || current.afrTarget);
+    // 3. AFR ERROR CORRECTION
+    const afrError = avgAfr - (suggestions.afrTarget ?? current.afrTarget);
     if (Math.abs(afrError) > 0.1) {
       suggestions.fuelCorrection = current.fuelCorrection + (afrError * 12);
     }

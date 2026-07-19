@@ -1,121 +1,240 @@
+import { PidKey, buildPidRequest, parsePidResponse, parseDtcResponse, parseClearResponse, DecodedDtc } from './obd2';
+
+interface BleProfile {
+  name: string;
+  service: string;
+  write: string;
+  notify: string;
+}
+
+/**
+ * Known GATT service/characteristic UUIDs used by common ELM327-based
+ * Bluetooth LE OBD-II adapters (e.g. Vgate iCar Pro BLE, generic
+ * "OBDII BLE" clones using CC254x/HM-10 style serial modules).
+ *
+ * If your adapter isn't recognized, its GATT profile just needs to be
+ * added here — the ELM327 AT command protocol underneath is identical.
+ */
+const KNOWN_PROFILES: BleProfile[] = [
+  { name: 'Generic ELM327 BLE (FFF0)', service: '0000fff0-0000-1000-8000-00805f9b34fb', write: '0000fff2-0000-1000-8000-00805f9b34fb', notify: '0000fff1-0000-1000-8000-00805f9b34fb' },
+  { name: 'HM-10 Serial (FFE0)', service: '0000ffe0-0000-1000-8000-00805f9b34fb', write: '0000ffe1-0000-1000-8000-00805f9b34fb', notify: '0000ffe1-0000-1000-8000-00805f9b34fb' },
+];
+
+type PendingResolver = { resolve: (v: string) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 
 export class HardwareService {
   private device: any = null;
   private server: any = null;
-  private characteristic: any = null;
-  private isBusy = false;
-  private isSimulated = false;
+  private writeChar: any = null;
+  private notifyChar: any = null;
+  private connected = false;
+  private protocolName = 'UNKNOWN';
 
-  private static readonly SERIAL_UUID = '00001101-0000-1000-8000-00805f9b34fb';
+  private rxBuffer = '';
+  private pending: PendingResolver[] = [];
+  private commandQueue: Promise<any> = Promise.resolve();
 
-  async connect(): Promise<boolean> {
+  async connect(): Promise<{ success: boolean; message: string }> {
     const nav = navigator as any;
-    
-    // Simulate initial connection delay
-    await new Promise(r => setTimeout(r, 1200));
 
-    // Check for Bluetooth availability and potential Permission Policy restrictions
     if (!nav.bluetooth) {
-      this.startSimulatedMode("Web Bluetooth API not detected.");
-      return true;
+      return { success: false, message: 'Web Bluetooth is not available in this browser/context. Use Chrome or Edge on Android with an ELM327 Bluetooth LE OBD-II adapter.' };
     }
 
     try {
-      // Robust connection attempt with specific handling for Policy/Security errors
       this.device = await nav.bluetooth.requestDevice({
-        filters: [{ services: [HardwareService.SERIAL_UUID] }],
-        optionalServices: [HardwareService.SERIAL_UUID]
+        acceptAllDevices: true,
+        optionalServices: KNOWN_PROFILES.map(p => p.service),
       });
 
       this.server = await this.device.gatt.connect();
-      const service = await this.server.getPrimaryService(HardwareService.SERIAL_UUID);
-      this.characteristic = await service.getCharacteristic(HardwareService.SERIAL_UUID);
 
-      await this.sendCommand('AT Z');    
-      await this.sendCommand('AT SP 0'); 
-      await this.sendCommand('01 00');   
-      
-      this.isSimulated = false;
-      this.logToTerminal("PHYSICAL_LINK_ESTABLISHED_ISO15765");
-      return true;
-    } catch (error: any) {
-      console.error("Hardware link error:", error);
-      
-      // Detailed error logging for diagnostics
-      let reason = "Hardware link failed.";
-      if (error.name === 'SecurityError' || error.message?.includes('permissions policy')) {
-        reason = "Bluetooth restricted by Browser Permissions Policy.";
-      } else if (error.name === 'NotFoundError') {
-        reason = "No hardware device selected by user.";
+      let matchedProfile: BleProfile | null = null;
+      for (const profile of KNOWN_PROFILES) {
+        try {
+          const service = await this.server.getPrimaryService(profile.service);
+          this.writeChar = await service.getCharacteristic(profile.write);
+          this.notifyChar = profile.notify === profile.write
+            ? this.writeChar
+            : await service.getCharacteristic(profile.notify);
+          matchedProfile = profile;
+          break;
+        } catch {
+          continue;
+        }
       }
 
-      this.startSimulatedMode(reason);
-      return true; // Return true to allow app usage even in simulation
+      if (!matchedProfile) {
+        this.disconnect();
+        return {
+          success: false,
+          message: `Connected to "${this.device.name || 'device'}" but its GATT service UUID isn't in the known ELM327 adapter list yet. Tell me the adapter model and I'll add its profile.`,
+        };
+      }
+
+      await this.notifyChar.startNotifications();
+      this.notifyChar.addEventListener('characteristicvaluechanged', this.handleNotification);
+
+      await this.initElm327();
+      this.connected = true;
+      return { success: true, message: `Linked: ${this.device.name || matchedProfile.name}` };
+    } catch (error: any) {
+      if (error?.name === 'NotFoundError') {
+        return { success: false, message: 'No device selected.' };
+      }
+      return { success: false, message: error?.message || 'Bluetooth connection failed.' };
     }
   }
 
-  private startSimulatedMode(reason: string) {
-    console.warn(`Hardware: Falling back to Simulation. Reason: ${reason}`);
-    this.isSimulated = true;
-    this.logToTerminal(`INIT_VIRTUAL_ECU_BRIDGE_SUCCESS // ${reason}`);
+  private async initElm327() {
+    await this.sendCommand('ATZ', 3000).catch(() => {});
+    await this.sendCommand('ATE0').catch(() => {});
+    await this.sendCommand('ATL0').catch(() => {});
+    await this.sendCommand('ATS0').catch(() => {});
+    await this.sendCommand('ATH0').catch(() => {});
+    await this.sendCommand('ATSP0').catch(() => {});
+    // Force a protocol handshake, then read back which one the adapter negotiated with the vehicle.
+    await this.sendCommand('0100').catch(() => {});
+    try {
+      const proto = await this.sendCommand('ATDP');
+      this.protocolName = proto.replace(/[\r\n>]/g, '').trim() || 'UNKNOWN';
+    } catch {
+      this.protocolName = 'UNKNOWN';
+    }
   }
 
-  private logToTerminal(cmd: string) {
-    window.dispatchEvent(new CustomEvent('can-bus-tx', { 
-      detail: { cmd, timestamp: Date.now() } 
+  getProtocolName(): string {
+    return this.protocolName;
+  }
+
+  private handleNotification = (event: Event) => {
+    const value: DataView | undefined = (event.target as any)?.value;
+    if (!value) return;
+    const text = new TextDecoder().decode(value);
+    this.rxBuffer += text;
+
+    if (this.rxBuffer.includes('>')) {
+      const [response] = this.rxBuffer.split('>');
+      this.rxBuffer = '';
+      this.dispatchTraffic('RX', response.trim());
+      const next = this.pending.shift();
+      if (next) {
+        clearTimeout(next.timer);
+        next.resolve(response.trim());
+      }
+    }
+  };
+
+  private dispatchTraffic(direction: 'TX' | 'RX', cmd: string) {
+    window.dispatchEvent(new CustomEvent('can-bus-tx', {
+      detail: { direction, cmd, timestamp: Date.now() },
     }));
   }
 
-  async sendCommand(cmd: string): Promise<string> {
-    this.logToTerminal(cmd);
-    
-    if (this.isSimulated) {
-      return "OK";
-    }
+  /** Sends a raw AT/OBD command and waits for the ELM327 '>' prompt. Commands are serialized since the adapter processes one at a time. */
+  sendCommand(cmd: string, timeoutMs = 2000): Promise<string> {
+    const run = () => this.sendCommandNow(cmd, timeoutMs);
+    const result = this.commandQueue.then(run, run);
+    this.commandQueue = result.catch(() => {});
+    return result;
+  }
 
-    if (!this.characteristic || this.isBusy) return "BUSY";
-    
-    try {
-      this.isBusy = true;
+  private sendCommandNow(cmd: string, timeoutMs: number): Promise<string> {
+    if (!this.writeChar) return Promise.reject(new Error('NOT_CONNECTED'));
+
+    this.dispatchTraffic('TX', cmd);
+
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = this.pending.findIndex(p => p.resolve === resolveWrapped);
+        if (idx >= 0) this.pending.splice(idx, 1);
+        reject(new Error('TIMEOUT'));
+      }, timeoutMs);
+
+      const resolveWrapped = (v: string) => resolve(v);
+      this.pending.push({ resolve: resolveWrapped, reject, timer });
+
       const encoder = new TextEncoder();
-      const data = encoder.encode(cmd + '\r');
-      await this.characteristic.writeValue(data);
-      this.isBusy = false;
-      return "OK";
-    } catch (e) {
-      this.isBusy = false;
-      return "WRITE_ERROR";
+      this.writeChar.writeValue(encoder.encode(cmd + '\r')).catch((e: Error) => {
+        clearTimeout(timer);
+        const idx = this.pending.findIndex(p => p.resolve === resolveWrapped);
+        if (idx >= 0) this.pending.splice(idx, 1);
+        reject(e);
+      });
+    });
+  }
+
+  async queryPID(key: PidKey): Promise<number | null> {
+    if (!this.connected) return null;
+    try {
+      const raw = await this.sendCommand(buildPidRequest(key));
+      return parsePidResponse(raw, key);
+    } catch {
+      return null;
     }
   }
 
-  async queryPID(pid: string): Promise<string> {
-    return await this.sendCommand(pid);
+  /** Sequentially polls a set of PIDs. Real ELM327/BLE round-trip latency means this is not instantaneous — expect roughly 100-300ms per PID. */
+  async pollPids(keys: PidKey[]): Promise<Partial<Record<PidKey, number | null>>> {
+    const results: Partial<Record<PidKey, number | null>> = {};
+    for (const key of keys) {
+      results[key] = await this.queryPID(key);
+    }
+    return results;
+  }
+
+  async readDTCs(): Promise<DecodedDtc[]> {
+    if (!this.connected) return [];
+    try {
+      const raw = await this.sendCommand('03');
+      return parseDtcResponse(raw);
+    } catch {
+      return [];
+    }
   }
 
   async clearCodes(): Promise<boolean> {
-    const response = await this.sendCommand('04'); 
-    return response.includes('OK');
-  }
-
-  async readDTCs(): Promise<string[]> {
-    if (this.isSimulated) {
-       return ["P0171 - System Too Lean", "P0300 - Random Misfire"];
+    if (!this.connected) return false;
+    try {
+      const raw = await this.sendCommand('04');
+      return parseClearResponse(raw);
+    } catch {
+      return false;
     }
-    const response = await this.sendCommand('03');
-    return response === "OK" ? ["P0171 - Lean Condition", "P0420 - Catalyst Efficiency"] : [];
   }
 
-  getLinkStatus() {
-    return this.isSimulated ? "SIMULATED_LINK" : "PHYSICAL_LINK";
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  getLinkStatus(): 'CONNECTED' | 'DISCONNECTED' {
+    return this.connected ? 'CONNECTED' : 'DISCONNECTED';
   }
 
   disconnect() {
+    if (this.notifyChar) {
+      try {
+        this.notifyChar.removeEventListener('characteristicvaluechanged', this.handleNotification);
+        this.notifyChar.stopNotifications();
+      } catch {
+        // best-effort cleanup
+      }
+    }
     if (this.device?.gatt?.connected) {
       this.device.gatt.disconnect();
     }
     this.device = null;
-    this.characteristic = null;
-    this.logToTerminal("LINK_TERMINATED");
+    this.server = null;
+    this.writeChar = null;
+    this.notifyChar = null;
+    this.connected = false;
+    this.protocolName = 'UNKNOWN';
+    this.rxBuffer = '';
+    for (const p of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new Error('DISCONNECTED'));
+    }
+    this.pending = [];
   }
 }
 

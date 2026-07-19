@@ -19,6 +19,8 @@ interface DataLoggerProps {
   onClear: () => void;
 }
 
+const fmt = (v: number | null, digits: number) => v === null ? 'N/A' : v.toFixed(digits);
+
 const DataLogger: React.FC<DataLoggerProps> = ({ logs, isRecording, onToggleRecording, onClear }) => {
   return (
     <div className="p-8 h-full flex flex-col">
@@ -105,11 +107,11 @@ const DataLogger: React.FC<DataLoggerProps> = ({ logs, isRecording, onToggleReco
             {logs.slice(-5).reverse().map((log, i) => (
               <tr key={i} className="border-b border-gray-900 last:border-0">
                 <td className="py-3 text-gray-400">{new Date(log.timestamp).toLocaleTimeString()}</td>
-                <td className="text-red-400">{log.rpm.toFixed(0)}</td>
-                <td className="text-blue-400">{log.boost.toFixed(1)}</td>
-                <td className="text-emerald-400">{log.afr.toFixed(2)}</td>
-                <td className="text-orange-400">{log.coolantTemp.toFixed(1)}</td>
-                <td className={log.knock > 0 ? 'text-red-500 font-bold' : 'text-gray-600'}>{log.knock.toFixed(1)}</td>
+                <td className="text-red-400">{fmt(log.rpm, 0)}</td>
+                <td className="text-blue-400">{fmt(log.boost, 1)}</td>
+                <td className="text-emerald-400">{fmt(log.afr, 2)}</td>
+                <td className="text-orange-400">{fmt(log.coolantTemp, 1)}</td>
+                <td className="text-gray-600">N/A</td>
               </tr>
             ))}
           </tbody>

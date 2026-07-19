@@ -2,7 +2,7 @@
 import React from 'react';
 
 interface GaugeProps {
-  value: number;
+  value: number | null;
   min: number;
   max: number;
   label: string;
@@ -11,18 +11,20 @@ interface GaugeProps {
   size?: number;
 }
 
-const Gauge: React.FC<GaugeProps> = ({ 
-  value, 
-  min, 
-  max, 
-  label, 
-  unit, 
-  color = '#7c3aed', 
-  size = 200 
+const Gauge: React.FC<GaugeProps> = ({
+  value,
+  min,
+  max,
+  label,
+  unit,
+  color = '#7c3aed',
+  size = 200
 }) => {
+  const hasValue = value !== null;
+  const displayColor = hasValue ? color : '#3f3f46';
   const radius = (size / 2) - 10;
   const circumference = 2 * Math.PI * radius;
-  const progress = Math.min(Math.max((value - min) / (max - min), 0), 1);
+  const progress = hasValue ? Math.min(Math.max((value - min) / (max - min), 0), 1) : 0;
   const dashOffset = circumference * (1 - progress * 0.75); // 270 degree arc
 
   return (
@@ -45,7 +47,7 @@ const Gauge: React.FC<GaugeProps> = ({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={color}
+          stroke={displayColor}
           strokeWidth="12"
           strokeDasharray={circumference}
           strokeDashoffset={dashOffset}
@@ -53,11 +55,11 @@ const Gauge: React.FC<GaugeProps> = ({
           className="transition-all duration-300 ease-out"
         />
       </svg>
-      
+
       {/* Value Readout */}
       <div className="absolute inset-0 flex flex-col items-center justify-center mt-2">
-        <span className="text-4xl font-black text-white tracking-tighter">
-          {typeof value === 'number' ? value.toFixed(unit === 'AFR' ? 2 : 0) : value}
+        <span className={`text-4xl font-black tracking-tighter ${hasValue ? 'text-white' : 'text-gray-700'}`}>
+          {hasValue ? value.toFixed(unit === 'AFR' ? 2 : 0) : 'N/A'}
         </span>
         <span className="text-xs uppercase font-bold text-gray-500">{unit}</span>
       </div>

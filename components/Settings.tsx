@@ -122,13 +122,13 @@ const Settings: React.FC<SettingsProps> = ({
             <div className="space-y-2">
               <div className="flex justify-between items-center p-4 bg-black/40 rounded-xl border border-gray-900">
                 <span className="text-[9px] font-black uppercase text-gray-600">Hardware Auth</span>
-                <span className={`font-mono text-[10px] font-black ${hardware.getLinkStatus() === 'PHYSICAL_LINK' ? 'text-emerald-500' : 'text-orange-500'}`}>
+                <span className={`font-mono text-[10px] font-black ${hardware.getLinkStatus() === 'CONNECTED' ? 'text-emerald-500' : 'text-orange-500'}`}>
                   {hardware.getLinkStatus()}
                 </span>
               </div>
               <div className="flex justify-between items-center p-4 bg-black/40 rounded-xl border border-gray-900">
-                <span className="text-[9px] font-black uppercase text-gray-600">CAN Protocol</span>
-                <span className="text-emerald-500 font-mono text-[10px] font-black italic">SAE J1939-21</span>
+                <span className="text-[9px] font-black uppercase text-gray-600">Negotiated Protocol</span>
+                <span className="text-emerald-500 font-mono text-[10px] font-black italic">{hardware.getProtocolName()}</span>
               </div>
             </div>
           </div>
@@ -140,10 +140,7 @@ const Settings: React.FC<SettingsProps> = ({
               <i className="fas fa-user-shield"></i> Engineering Access
             </h3>
             <div className="space-y-4">
-              <button className="w-full py-5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-2xl font-black text-[9px] uppercase tracking-[0.3em] transition-all text-gray-400 hover:text-white flex items-center justify-center gap-3">
-                <i className="fas fa-file-export"></i> Dump Calibration Binary
-              </button>
-              <button 
+              <button
                 onClick={onDisconnect}
                 className="w-full py-5 bg-red-600/10 text-red-500 hover:bg-red-600 border border-red-500/30 hover:text-white rounded-2xl font-black text-[9px] uppercase tracking-[0.4em] transition-all shadow-xl shadow-red-600/10"
               >

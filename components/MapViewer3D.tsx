@@ -63,7 +63,7 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad, profil
     );
     if (activeMap === 'fuel') setFuelGrid(optimized);
     else setIgnGrid(optimized);
-    alert("Acura Precision Calibration Applied Successfully.");
+    alert("Local planning grid updated. Remember: this does not write to the real ECU.");
   };
 
   // Dynamic coloring based on value vs safe zones
@@ -222,18 +222,9 @@ const MapViewer3D: React.FC<MapViewerProps> = ({ currentRpm, currentLoad, profil
                  <button onClick={() => adjustValue(-0.5)} className="py-3 bg-gray-900 hover:bg-gray-800 rounded-xl text-[9px] font-black uppercase tracking-widest border border-gray-800 transition-all">-0.5 Offset</button>
               </div>
 
-              <button 
-                onClick={() => {
-                  const val = grid[selectedCell.r][selectedCell.c].toFixed(2);
-                  window.dispatchEvent(new CustomEvent('can-bus-tx', { 
-                    detail: { cmd: `WRITE_RAM_ADDR_${selectedCell.r}_${selectedCell.c}_VAL_${val}`, timestamp: Date.now() } 
-                  }));
-                  alert("RAM Write Sequence Successful.");
-                }}
-                className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-purple-600/20 active:scale-95 transition-all border border-purple-400/20"
-              >
-                Flash Address
-              </button>
+              <p className="text-[8px] text-gray-600 font-mono uppercase tracking-widest leading-relaxed px-1">
+                Planning aid only — generic OBD-II can't write live tune tables into a stock ECU. Transcribe these values into your standalone ECU's own official tuning software (Haltech ECU Manager, Link PCLink, MoTeC M1, etc.) to apply them.
+              </p>
             </div>
           ) : (
             <div className="glass p-8 rounded-[2.5rem] border-2 border-dashed border-gray-800/50 text-center flex items-center justify-center flex-col gap-4 min-h-[220px]">

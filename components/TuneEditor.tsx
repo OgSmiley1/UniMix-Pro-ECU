@@ -41,21 +41,27 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
     onUpdate({ ...settings, [key]: value });
   };
 
-  const currentTelemetry = logs[logs.length - 1] || { afr: 14.7, boost: 0, knock: 0 };
+  const currentTelemetry = logs[logs.length - 1];
 
   // Helper to check if a parameter is currently deviating from AI safe ranges
-  const getDeviationStatus = (val: number, range?: [number, number]) => {
-    if (!range) return 'nominal';
+  const getDeviationStatus = (val: number | null | undefined, range?: [number, number]) => {
+    if (val === null || val === undefined || !range) return 'nominal';
     if (val < range[0]) return 'low';
     if (val > range[1]) return 'high';
     return 'nominal';
   };
 
-  const afrStatus = getDeviationStatus(currentTelemetry.afr, aiAdvice?.safeEnvelope?.afr);
-  const boostStatus = getDeviationStatus(currentTelemetry.boost, aiAdvice?.safeEnvelope?.boost);
+  const afrStatus = getDeviationStatus(currentTelemetry?.afr, aiAdvice?.safeEnvelope?.afr);
+  const boostStatus = getDeviationStatus(currentTelemetry?.boost, aiAdvice?.safeEnvelope?.boost);
 
   return (
     <div className="p-8 h-full flex flex-col gap-8 max-w-5xl mx-auto overflow-y-auto pb-24 no-scrollbar relative">
+      <div className="glass p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5">
+        <p className="text-[9px] text-amber-400 font-mono uppercase tracking-widest leading-relaxed">
+          <i className="fas fa-info-circle mr-2"></i>
+          These are recommended targets from real logged telemetry, not live writes. Generic OBD-II can't flash a stock ECU — apply these values through your standalone ECU's own official software (Haltech/Link/MoTeC/etc.), or a licensed reflash tool for your platform.
+        </p>
+      </div>
       {/* AI Advisor Panel */}
       <div className={`glass p-6 rounded-[2rem] border transition-all duration-700 ${aiAdvice ? 'border-blue-500/20 opacity-100' : 'border-gray-800 opacity-50'}`}>
         <div className="flex justify-between items-start mb-2">
@@ -65,7 +71,7 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
              </div>
              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 italic">Live AI Advisor</h3>
           </div>
-          {aiAdvice && <span className="text-[8px] font-mono text-gray-600 uppercase tracking-widest">Confidence: 98.2%</span>}
+          {aiAdvice && <span className="text-[8px] font-mono text-gray-600 uppercase tracking-widest">Gemini Analysis</span>}
         </div>
         <p className="text-xs text-gray-400 italic leading-relaxed">
           {aiAdvice?.reasoning || "Analyzing telemetry stream... waiting for load pull to calibrate safety envelope."}
