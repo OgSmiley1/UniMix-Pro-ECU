@@ -39,6 +39,30 @@ export const TUNING_TECHNIQUES: TuningTechnique[] = [
     ],
     verdict: 'Always pair a boost increase with a load-based ignition/fuel map revision and a hard boost-cut failsafe, not just a target-pressure slider.',
   },
+  {
+    id: 'water-meth-injection',
+    title: 'Water/Methanol Injection (WMI)',
+    summary: 'Injecting a water-methanol mix into the intake charge for evaporative cooling and octane boost — lets a tune run more boost/timing on the same pump fuel.',
+    howItWorks: 'A WMI kit sprays a water/methanol mix (commonly 50/50, sometimes straight methanol) into the intake tract, usually triggered by a boost or MAP switch. The evaporating water pulls heat out of the intake charge, and methanol adds effective octane — together they let the tune run more boost and more ignition advance than the base fuel alone would safely allow.',
+    risks: [
+      'The tune is only safe as long as the meth is actually flowing. If the tank runs dry, a pump fails, a fuse blows, or a nozzle clogs, you instantly lose both the cooling and the octane the tune is counting on — this is the single most-cited way WMI kills engines, because the ignition/boost map was calibrated assuming it would always be there.',
+      'The opposite failure is just as real: a stuck-open solenoid or failed pressure switch can flood the engine with water — one widely cited case hydraulic-locked a rod this way.',
+      'A tune built around WMI is not safely reversible on the fly — if you turn the kit off (empty tank, disabled system) you must also revert to the lower-boost/less-aggressive base map, not keep driving on the aggressive one.',
+    ],
+    verdict: 'WMI without a hard failsafe (flow/level sensor feeding back to the ECU to force a conservative map when injection isn\'t confirmed) is not "extra safety margin" — it is a single point of failure the tune has been made to depend on.',
+  },
+  {
+    id: '2-step-launch',
+    title: '2-Step Launch Control',
+    summary: 'A secondary, lower rev limiter engaged on the brake/clutch to build boost against the limiter before launching — a drag/drift staging tool, not a street feature.',
+    howItWorks: 'With the clutch in (or brake held on an auto), full throttle holds the engine at a preset lower RPM ceiling instead of the normal rev limit — via ignition cut (aftermarket, more common) or fuel cut (many factory systems). On a turbo car this builds boost against the limiter before the car even moves; releasing the clutch/brake launches at full power and boost already spooled.',
+    risks: [
+      'Ignition-cut launch limiters dump unburned fuel into the exhaust exactly like a crackle tune — it will cook a stock catalytic converter quickly, which is why cars set up for it usually run a cat delete or dump pipe.',
+      'The shock load of releasing the clutch at a held high RPM against full boost goes straight through the clutch, gearbox, driveshaft, differential, and axles — repeated hard 2-step launches are a known way to shorten drivetrain life, independent of anything the engine itself experiences.',
+      'A launch RPM set too high for the tire/surface just spins the tires and heat-cycles them for no ET gain — the correct number comes from traction, not from "as much boost as possible."',
+    ],
+    verdict: 'A legitimate motorsport staging tool, but it is a drivetrain and exhaust decision as much as an engine-tuning one — set it up expecting clutch/diff wear and cat damage, not as a free party trick.',
+  },
 ];
 
 export const COMMON_MISTAKES: string[] = [
@@ -52,6 +76,8 @@ export const COMMON_MISTAKES: string[] = [
   'Tuning a diesel by AFR intuition carried over from gasoline — diesels run lean by design; the real limit is exhaust gas temperature (EGT), not AFR or knock.',
   'Running an old, tired turbo (especially ceramic-wheel units on older JDM platforms) at boost levels it was never rated for.',
   'No data logging during a pull — tuning by feel/sound instead of watching AFR, knock, and EGT in real time.',
+  'Tuning around water/methanol injection without a flow or level failsafe wired back to the ECU — if the meth stops and the map doesn\'t know, you are instantly running a lean, over-advanced map on pump fuel.',
+  'Treating a 2-step/launch-control setup as engine-only — the drivetrain (clutch, diff, axles) and the exhaust (cat) absorb just as much abuse as the motor does.',
 ];
 
 export function buildKnowledgePromptContext(): string {
