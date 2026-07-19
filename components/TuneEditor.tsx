@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { TuneSettings, VehicleProfile, Telemetry } from '../types';
 import { INITIAL_TUNE } from '../constants';
 import { optimizeTuneWithAI, TuningAISuggestion } from '../services/geminiService';
+import TuningKnowledge from './TuningKnowledge';
 
 interface TuneEditorProps {
   settings: TuneSettings;
@@ -180,17 +181,41 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
             </div>
             <span className="text-red-400 font-mono text-2xl font-black">{settings.topSpeedLimit} KM/H</span>
           </div>
-          <input 
-            type="range" min="100" max="450" step="5" 
+          <input
+            type="range" min="100" max="450" step="5"
             value={settings.topSpeedLimit}
             onChange={(e) => handleChange('topSpeedLimit', parseInt(e.target.value))}
             className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-red-500"
           />
         </div>
+
+        {/* Overrun Crackle / Popcorn Intensity — planning value, see Tuning Reference below for what this actually requires */}
+        <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6 md:col-span-2">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                <i className="fas fa-fire text-orange-500 text-xs"></i>
+              </div>
+              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Overrun Crackle / Popcorn Intensity</label>
+            </div>
+            <span className="text-orange-400 font-mono text-2xl font-black">{settings.crackleIntensity}%</span>
+          </div>
+          <input
+            type="range" min="0" max="100" step="5"
+            value={settings.crackleIntensity}
+            onChange={(e) => handleChange('crackleIntensity', parseInt(e.target.value))}
+            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          />
+          <p className="text-[8px] text-gray-600 font-mono uppercase tracking-widest leading-relaxed">
+            Target overrun ignition-retard aggressiveness only — not a live control. Requires its own overrun fuel/ignition map, and a straight pipe if the car still runs a cat/DPF. See "Popcorn / Crackle" in the Tuning Reference below before using this on a street car.
+          </p>
+        </div>
       </div>
 
+      <TuningKnowledge profile={currentProfile} />
+
       <div className="flex gap-4">
-        <button 
+        <button
           onClick={onOptimize}
           disabled={isOptimizing}
           className="flex-1 py-5 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] transition-all shadow-xl shadow-purple-600/20 text-white"

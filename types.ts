@@ -50,13 +50,16 @@ export interface VehicleProfile {
   engine: string;
   maxBoost: number;
   safeAFR: number;
-  fuelType: '91' | '93' | 'E85' | 'Racing';
+  // US (R+M)/2) and RON-labeled Middle East pump grades, plus common track fuels.
+  fuelType: '91' | '93' | '95' | '98' | 'E85' | 'Racing' | 'Diesel';
   vinPrefix: string;
   ecuType: string;
   displacement: number;
   induction: 'Turbo' | 'Supercharged' | 'N/A';
   turboSize: string;
   peakTorque: string;
+  region?: string; // e.g. 'JDM', 'UAE/GCC', 'USDM'
+  notes?: string; // platform-specific tuning context: known weak points, what forums agree to avoid
 }
 
 export type AppTab = 'dashboard' | 'tune' | 'maps' | 'logs' | 'dtc' | 'settings' | 'files';
