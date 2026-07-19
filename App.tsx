@@ -39,6 +39,8 @@ const App: React.FC = () => {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [logs, setLogs] = useState<Telemetry[]>([]);
   const [telemetry, setTelemetry] = useState<Telemetry>(BLANK_TELEMETRY);
+  const [motionEnabled, setMotionEnabled] = useState(false);
+  const [motionError, setMotionError] = useState<string | null>(null);
 
   const isRecordingRef = useRef(isRecording);
   useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
@@ -113,6 +115,44 @@ const App: React.FC = () => {
     pollLoop();
     return () => { cancelled = true; };
   }, [isConnected]);
+
+  // Real phone accelerometer G-force. Requires an explicit user gesture on
+  // iOS (DeviceMotionEvent.requestPermission); Android Chrome needs no
+  // permission prompt. Reads the device's actual linear acceleration —
+  // never fabricated — and stays null until the user opts in.
+  const enableMotion = async () => {
+    setMotionError(null);
+    const DME = (window as any).DeviceMotionEvent;
+    if (!DME) {
+      setMotionError('DeviceMotion API not available on this device/browser.');
+      return;
+    }
+    if (typeof DME.requestPermission === 'function') {
+      try {
+        const result = await DME.requestPermission();
+        if (result !== 'granted') {
+          setMotionError('Motion sensor permission denied.');
+          return;
+        }
+      } catch {
+        setMotionError('Motion sensor permission request failed.');
+        return;
+      }
+    }
+    setMotionEnabled(true);
+  };
+
+  useEffect(() => {
+    if (!motionEnabled) return;
+    const handleMotion = (e: DeviceMotionEvent) => {
+      const a = e.acceleration;
+      if (!a || a.x === null || a.y === null || a.z === null) return;
+      const magnitudeG = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z) / 9.80665;
+      setTelemetry(prev => ({ ...prev, gForce: magnitudeG }));
+    };
+    window.addEventListener('devicemotion', handleMotion);
+    return () => window.removeEventListener('devicemotion', handleMotion);
+  }, [motionEnabled]);
 
   const handleConnect = async () => {
     setIsConnecting(true);
@@ -243,6 +283,9 @@ const App: React.FC = () => {
               onDisconnect={handleDisconnect}
               chipType={tune.chipType}
               onChipChange={(chip: HardwareChip) => setTune(prev => ({...prev, chipType: chip}))}
+              motionEnabled={motionEnabled}
+              motionError={motionError}
+              onEnableMotion={enableMotion}
             />
           )}
         </div>

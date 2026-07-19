@@ -10,14 +10,20 @@ interface SettingsProps {
   onDisconnect: () => void;
   chipType: HardwareChip;
   onChipChange: (chip: HardwareChip) => void;
+  motionEnabled: boolean;
+  motionError: string | null;
+  onEnableMotion: () => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ 
-  currentProfile, 
-  setProfile, 
-  onDisconnect, 
-  chipType, 
-  onChipChange 
+const Settings: React.FC<SettingsProps> = ({
+  currentProfile,
+  setProfile,
+  onDisconnect,
+  chipType,
+  onChipChange,
+  motionEnabled,
+  motionError,
+  onEnableMotion
 }) => {
   return (
     <div className="p-4 md:p-12 h-full max-w-6xl mx-auto overflow-y-auto pb-32 font-sans no-scrollbar">
@@ -131,6 +137,29 @@ const Settings: React.FC<SettingsProps> = ({
                 <span className="text-emerald-500 font-mono text-[10px] font-black italic">{hardware.getProtocolName()}</span>
               </div>
             </div>
+          </div>
+
+          <div className="glass p-8 md:p-10 rounded-[3rem] border border-blue-500/10 shadow-2xl">
+            <h3 className="text-xl font-black mb-4 text-blue-400 uppercase italic tracking-widest flex items-center gap-3">
+              <i className="fas fa-satellite-dish"></i> Phone Sensors
+            </h3>
+            <p className="text-[10px] text-gray-500 font-mono uppercase tracking-widest leading-relaxed mb-6">
+              G-Force is read from this phone's real accelerometer (DeviceMotion), not simulated. iOS requires an explicit tap to grant permission; Android grants it automatically.
+            </p>
+            <button
+              onClick={onEnableMotion}
+              disabled={motionEnabled}
+              className={`w-full py-4 rounded-2xl font-black text-[9px] uppercase tracking-[0.3em] transition-all ${
+                motionEnabled
+                  ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-blue-600/10 text-blue-400 border border-blue-500/30 hover:bg-blue-600/20'
+              }`}
+            >
+              {motionEnabled ? 'Accelerometer Active' : 'Enable Accelerometer'}
+            </button>
+            {motionError && (
+              <p className="text-[9px] text-red-400 font-mono mt-3">{motionError}</p>
+            )}
           </div>
         </div>
 

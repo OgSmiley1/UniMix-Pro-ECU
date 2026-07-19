@@ -148,6 +148,14 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
                  <span className="text-[12px] ml-1">KM/H</span>
                </p>
              </div>
+             <div className="w-px h-12 bg-gray-900 mx-2"></div>
+             <div className="text-right">
+               <p className="text-[8px] font-black uppercase text-gray-700 tracking-tighter">G-Force</p>
+               <p className="text-3xl font-mono font-black text-white italic">
+                 <LiveValue value={fmt(telemetry.gForce, 2)} />
+                 <span className="text-[12px] ml-1">G</span>
+               </p>
+             </div>
           </div>
         </div>
       </div>
