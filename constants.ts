@@ -266,6 +266,5 @@ export const INITIAL_TUNE: TuneSettings = {
   revLimit: 7500,
   crackleIntensity: 0,
   chipType: 'Standard',
-  topSpeedLimit: 250,
-  globalOffset: 0
+  topSpeedLimit: 250
 };

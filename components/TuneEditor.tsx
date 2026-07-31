@@ -189,6 +189,28 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
           />
         </div>
 
+        {/* Rev Limiter target */}
+        <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
+                <i className="fas fa-gauge text-yellow-500 text-xs"></i>
+              </div>
+              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Rev Limiter</label>
+            </div>
+            <span className="text-yellow-400 font-mono text-2xl font-black">{settings.revLimit} RPM</span>
+          </div>
+          <input
+            type="range" min="5000" max="11000" step="100"
+            value={settings.revLimit}
+            onChange={(e) => handleChange('revLimit', parseInt(e.target.value))}
+            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+          />
+          <p className="text-[8px] text-gray-600 font-mono uppercase tracking-widest leading-relaxed">
+            Recommended fuel/ignition-cut RPM ceiling. Set from the engine's valvetrain and rotating-assembly limits, not peak power — over-revving a stock bottom end is a mechanical failure no tune protects against.
+          </p>
+        </div>
+
         {/* Overrun Crackle / Popcorn Intensity — planning value, see Tuning Reference below for what this actually requires */}
         <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6 md:col-span-2">
           <div className="flex justify-between items-center">

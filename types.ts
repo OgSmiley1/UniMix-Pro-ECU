@@ -37,11 +37,10 @@ export interface TuneSettings {
   ignitionOffset: number;
   fuelCorrection: number;
   timingRetardPerPsi: number;
-  revLimit: number;
+  revLimit: number; // recommended rev limiter target (RPM)
   crackleIntensity: number; // 0-100 for popcorn backfire intensity
   chipType: HardwareChip;
   topSpeedLimit: number;
-  globalOffset: number; // Overall scaling factor
 }
 
 export interface VehicleProfile {
