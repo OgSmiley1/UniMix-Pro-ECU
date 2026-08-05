@@ -2,6 +2,187 @@
 import { VehicleProfile, TuneSettings } from './types';
 
 export const VEHICLE_PROFILES: VehicleProfile[] = [
+  // --- JDM Legends ---
+  {
+    id: 'nissan-r32-gtr',
+    name: 'Nissan Skyline GT-R R32 (BNR32)',
+    engine: '2.6L RB26DETT I6 Twin Turbo',
+    maxBoost: 17.0,
+    safeAFR: 11.6,
+    fuelType: '98',
+    vinPrefix: 'BNR32',
+    ecuType: 'Nistune / Apexi Power FC',
+    displacement: 2.6,
+    induction: 'Turbo',
+    turboSize: 'Twin Ceramic (Stock) / GT2860 (Built)',
+    peakTorque: '260 lb-ft (stock)',
+    region: 'JDM',
+    notes: '"Godzilla" — original ceramic turbine wheels are the classic failure point once boost climbs past ~15-16psi on tired stock turbos; most forums treat a turbo swap as a prerequisite for serious power, not an upgrade.'
+  },
+  {
+    id: 'nissan-r34-apexi',
+    name: 'Nissan GT-R R34 (Apexi PowerFC)',
+    engine: '2.6L RB26DETT I6 Twin Turbo',
+    maxBoost: 20.0,
+    safeAFR: 11.2,
+    fuelType: '98',
+    vinPrefix: 'BNR34',
+    ecuType: 'Apexi PowerFC',
+    displacement: 2.6,
+    induction: 'Turbo',
+    turboSize: 'Twin Nismo R1',
+    peakTorque: '450 lb-ft',
+    region: 'JDM',
+    notes: 'Later, stronger RB26 casting than the R32/R33 — but the same rule applies: boost without a matching ignition-timing map (not just a boost controller) is the #1 forum-cited mistake on this platform.'
+  },
+  {
+    id: 'toyota-supra-jza80',
+    name: 'Toyota Supra MK4 (JZA80)',
+    engine: '3.0L 2JZ-GTE I6 Twin Turbo',
+    maxBoost: 20.0,
+    safeAFR: 11.8,
+    fuelType: '98',
+    vinPrefix: 'JZA80',
+    ecuType: 'HKS F-CON V Pro / Link G4X',
+    displacement: 3.0,
+    induction: 'Turbo',
+    turboSize: 'Sequential Twins (Stock) / Single GT35R (Built)',
+    peakTorque: '333 lb-ft (stock)',
+    region: 'JDM',
+    notes: 'The famously over-built factory iron block. Forum consensus across Supra/ClubLexus threads: keep it in the low-12s AFR under boost even on big single-turbo builds — leaner than that is where knock risk climbs fast, and stock fueling (injectors/pump) runs out well before the block does.'
+  },
+  {
+    id: 'mazda-rx7-fd3s',
+    name: 'Mazda RX-7 FD3S',
+    engine: '1.3L 13B-REW Twin-Rotor Sequential Twin Turbo',
+    maxBoost: 14.0,
+    safeAFR: 11.0,
+    fuelType: '98',
+    vinPrefix: 'FD3S',
+    ecuType: 'Haltech Elite / Apexi Power FC',
+    displacement: 1.3,
+    induction: 'Turbo',
+    turboSize: 'Sequential Twins (Stock)',
+    peakTorque: '231 lb-ft (stock)',
+    region: 'JDM',
+    notes: 'Rotary, not piston — apex seals live and die by AFR. Run noticeably richer than a piston engine at the same boost; a lean condition that a piston motor shrugs off is the classic way to end an FD\'s rotor housings.'
+  },
+  {
+    id: 'nissan-silvia-s15',
+    name: 'Nissan Silvia S15 (Spec-R)',
+    engine: '2.0L SR20DET I4 Turbo',
+    maxBoost: 14.0,
+    safeAFR: 11.8,
+    fuelType: '95',
+    vinPrefix: 'S15',
+    ecuType: 'Nistune / Link G4+',
+    displacement: 2.0,
+    induction: 'Turbo',
+    turboSize: 'Stock T28 / GT2860RS (Common Upgrade)',
+    peakTorque: '203 lb-ft (stock)',
+    region: 'JDM',
+    notes: 'SR20 forums broadly agree stock internals hold to roughly 13-14psi on pump fuel; beyond that, ringland/rod-bolt stress climbs quickly and forged internals move from "nice to have" to "required".'
+  },
+  {
+    id: 'mitsubishi-evo9',
+    name: 'Mitsubishi Lancer Evolution IX',
+    engine: '2.0L 4G63T I4 Turbo',
+    maxBoost: 20.0,
+    safeAFR: 11.5,
+    fuelType: '95',
+    vinPrefix: 'CT9A',
+    ecuType: 'Ecutek / EcuFlash',
+    displacement: 2.0,
+    induction: 'Turbo',
+    turboSize: 'Stock TD05 / GT3076R (Built)',
+    peakTorque: '289 lb-ft (stock)',
+    region: 'JDM',
+    notes: 'One of the most reliable stock-internals JDM blocks up to roughly 400-450whp with just a turbo/fueling upgrade — but rod bearings, not pistons, are the real limiter under sustained high boost and high RPM.'
+  },
+  {
+    id: 'subaru-sti-gdb',
+    name: 'Subaru Impreza WRX STI (GDB)',
+    engine: '2.5L EJ257 Flat-4 Turbo',
+    maxBoost: 18.0,
+    safeAFR: 11.5,
+    fuelType: '95',
+    vinPrefix: 'GDB',
+    ecuType: 'Cobb Accessport / EcuTek',
+    displacement: 2.5,
+    induction: 'Turbo',
+    turboSize: 'Stock VF-Series / GT30 (Built)',
+    peakTorque: '290 lb-ft (stock)',
+    region: 'JDM',
+    notes: 'Ringland failure on the stock closed-deck-but-weak-piston EJ25 above roughly 20-22psi is the single most repeated cautionary tale on Subaru forums — it is a fueling/timing mistake, not bad luck.'
+  },
+
+  // --- UAE / GCC Icons ---
+  {
+    id: 'nissan-patrol-y61-safari',
+    name: 'Nissan Patrol Safari Y61 (GCC Desert Build)',
+    engine: '4.8L TB48DE I6 (Turbo Swap)',
+    maxBoost: 12.0,
+    safeAFR: 12.5,
+    fuelType: '95',
+    vinPrefix: 'Y61',
+    ecuType: 'Piggyback / Standalone (Shop-Specific)',
+    displacement: 4.8,
+    induction: 'Turbo',
+    turboSize: 'Single Garrett (Shop-Specific)',
+    peakTorque: '380 lb-ft (est. built)',
+    region: 'UAE/GCC',
+    notes: 'The UAE desert-drag icon — a big naturally-aspirated inline-six turbocharged by local specialist shops, famous for the viral "Patrol vs Porsche" story. In 45-50°C ambient, intercooler sizing and fuel system capacity are usually the real ceiling before the engine itself is.'
+  },
+  {
+    id: 'toyota-landcruiser-vdj200',
+    name: 'Toyota Land Cruiser 200 GXR (VDJ200)',
+    engine: '4.5L 1VD-FTV V8 Sequential Twin-Turbo Diesel',
+    maxBoost: 25.0,
+    safeAFR: 18.0,
+    fuelType: 'Diesel',
+    vinPrefix: 'VDJ200',
+    ecuType: 'Diesel Piggyback (EFILive-style)',
+    displacement: 4.5,
+    induction: 'Turbo',
+    turboSize: 'Sequential Twin Turbo (Stock)',
+    peakTorque: '516 lb-ft (stock)',
+    region: 'UAE/GCC',
+    notes: 'The UAE\'s default heavy-duty overland platform. Diesel tuning isn\'t AFR-limited the way gasoline is — it runs lean by design — so exhaust gas temperature (EGT), not AFR or knock, is the real ceiling on how much fuel/boost you can add.'
+  },
+  {
+    id: 'mercedes-g63-w463a',
+    name: 'Mercedes-AMG G63 (W463A)',
+    engine: '4.0L M177 Twin-Turbo V8',
+    maxBoost: 18.0,
+    safeAFR: 11.8,
+    fuelType: '98',
+    vinPrefix: 'W463',
+    ecuType: 'Bosch MED17 (Piggyback/Reflash)',
+    displacement: 4.0,
+    induction: 'Turbo',
+    turboSize: 'Twin-Scroll Twin Turbo (Stock)',
+    peakTorque: '627 lb-ft (stock)',
+    region: 'UAE/GCC',
+    notes: 'A staple of Dubai\'s luxury/off-road scene. Factory tunes leave a wide conservative margin, so stage-1 reflashes reliably free up large torque gains without touching hardware — the low-hanging fruit most shops sell first.'
+  },
+  {
+    id: 'ford-mustang-gt500',
+    name: 'Ford Mustang Shelby GT500',
+    engine: '5.2L Supercharged Predator V8',
+    maxBoost: 12.0,
+    safeAFR: 11.5,
+    fuelType: '95',
+    vinPrefix: '1FA6',
+    ecuType: 'HP Tuners / Ford Performance',
+    displacement: 5.2,
+    induction: 'Supercharged',
+    turboSize: 'Eaton 2.65L TVS (Stock)',
+    peakTorque: '625 lb-ft (stock)',
+    region: 'UAE/GCC',
+    notes: 'A common GCC-spec favorite thanks to cheap local fuel and a factory supercharger that responds well to a pulley/tune combo without the turbo-lag tuning complexity of a forced-induction swap.'
+  },
+
+  // --- Signature / Dream Builds ---
   {
     id: 'toyota-2000gt-500',
     name: 'Toyota 2000GT (500HP Restomod)',
@@ -14,7 +195,9 @@ export const VEHICLE_PROFILES: VehicleProfile[] = [
     displacement: 3.0,
     induction: 'Turbo',
     turboSize: 'Garrett G30-660',
-    peakTorque: '480 lb-ft'
+    peakTorque: '480 lb-ft',
+    region: 'Signature Build',
+    notes: 'A hypothetical engine-swap restomod profile for planning purposes — not a factory configuration.'
   },
   {
     id: 'srt-demon-170',
@@ -43,20 +226,6 @@ export const VEHICLE_PROFILES: VehicleProfile[] = [
     induction: 'Turbo',
     turboSize: 'Factory Twin Turbo',
     peakTorque: '492 lb-ft'
-  },
-  {
-    id: 'nissan-r34-apexi',
-    name: 'Nissan GT-R R34 (Apexi PowerFC)',
-    engine: '2.6L RB26DETT',
-    maxBoost: 20.0,
-    safeAFR: 11.2,
-    fuelType: '93',
-    vinPrefix: 'BNR34',
-    ecuType: 'Apexi PowerFC',
-    displacement: 2.6,
-    induction: 'Turbo',
-    turboSize: 'Twin Nismo R1',
-    peakTorque: '450 lb-ft'
   },
   {
     id: 'haltech-elite',
@@ -97,6 +266,5 @@ export const INITIAL_TUNE: TuneSettings = {
   revLimit: 7500,
   crackleIntensity: 0,
   chipType: 'Standard',
-  topSpeedLimit: 250,
-  globalOffset: 0
+  topSpeedLimit: 250
 };

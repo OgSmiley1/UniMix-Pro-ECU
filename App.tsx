@@ -12,104 +12,166 @@ import LiveTerminal from './components/LiveTerminal';
 import FileManager from './components/FileManager';
 import { TuningLogic } from './services/tuningService';
 import { hardware } from './services/hardwareService';
+import { PidKey, estimateAfrFromLambda } from './services/obd2';
+
+const POLL_PIDS: PidKey[] = [
+  'RPM', 'SPEED', 'COOLANT_TEMP', 'IAT', 'THROTTLE', 'MAP',
+  'ENGINE_LOAD', 'STFT_B1', 'LTFT_B1', 'MODULE_VOLTAGE',
+  'TIMING_ADVANCE', 'BAROMETRIC', 'O2_S1_LAMBDA',
+];
+
+const BLANK_TELEMETRY: Telemetry = {
+  rpm: null, boost: null, mapKpa: null, afr: null, coolantTemp: null,
+  oilPressure: null, speed: null, iat: null, throttle: null, knock: null,
+  stft: null, ltft: null, fuelPressure: null, injDutyCycle: null,
+  moduleVoltage: null, timingAdvance: null, engineLoad: null,
+  gForce: null, zeroToSixty: null, timestamp: Date.now(),
+};
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [connectStep, setConnectStep] = useState('');
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [currentProfile, setCurrentProfile] = useState<VehicleProfile>(VEHICLE_PROFILES[0]);
   const [tune, setTune] = useState<TuneSettings>({ ...INITIAL_TUNE });
   const [isRecording, setIsRecording] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [logs, setLogs] = useState<Telemetry[]>([]);
+  const [telemetry, setTelemetry] = useState<Telemetry>(BLANK_TELEMETRY);
+  const [motionEnabled, setMotionEnabled] = useState(false);
+  const [motionError, setMotionError] = useState<string | null>(null);
 
-  const [telemetry, setTelemetry] = useState<Telemetry>({
-    rpm: 0, boost: 0, afr: 14.7, coolantTemp: 90, 
-    oilPressure: 45, speed: 0, iat: 30, throttle: 0, 
-    knock: 0, mapVoltage: 0.5, stft: 0, ltft: 0,
-    fuelPressure: 58, injDutyCycle: 0, gForce: 0,
-    zeroToSixty: null,
-    timestamp: Date.now()
-  });
+  const isRecordingRef = useRef(isRecording);
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
 
+  const zeroToSixtyStartRef = useRef<number | null>(null);
+  const baroKpaRef = useRef<number | null>(null);
+
+  // Real-time polling loop against the actual connected ECU. No fabricated
+  // data: unsupported PIDs stay null and are rendered as N/A.
   useEffect(() => {
     if (!isConnected) return;
+    let cancelled = false;
 
-    const interval = setInterval(() => {
-      setTelemetry(prev => {
-        const targetThrottle = Math.random() > 0.94 ? 100 : (Math.random() * 20 + 5);
-        const newThrottle = prev.throttle + (targetThrottle - prev.throttle) * 0.1;
-        
-        // Apply Global Offset to RPM curve
-        const offsetMultiplier = 1 + (tune.globalOffset / 100);
-        const newRpm = 850 + ((newThrottle * 80) * offsetMultiplier) + (Math.random() * 20);
-        const effectiveRpm = Math.min(newRpm, tune.revLimit);
-        
-        const accel = (newThrottle / 100) * 18 * offsetMultiplier;
-        let newSpeed = prev.speed + (newThrottle > 10 ? accel : -5);
-        
-        // Respect Top Speed Limit
-        if (newSpeed > tune.topSpeedLimit) {
-           newSpeed = tune.topSpeedLimit;
-           // Simulate torque cut in log
-           if (Math.random() > 0.8) {
-              window.dispatchEvent(new CustomEvent('can-bus-tx', { 
-                 detail: { cmd: `SPEED_LIMIT_INTERVENE: ${tune.topSpeedLimit} KM/H`, timestamp: Date.now() } 
-              }));
-           }
+    const pollLoop = async () => {
+      while (!cancelled) {
+        const results = await hardware.pollPids(POLL_PIDS);
+        if (cancelled) break;
+
+        if (results.BAROMETRIC !== undefined && results.BAROMETRIC !== null) {
+          baroKpaRef.current = results.BAROMETRIC;
         }
 
-        const rawVoltage = TuningLogic.psiToVoltage((newThrottle / 100) * 28.0); 
-        const modifiedVoltage = TuningLogic.interceptMapSignal(rawVoltage, tune.boostLimit);
-        const actualBoost = currentProfile.induction === 'N/A' ? 0 : TuningLogic.voltageToPsi(modifiedVoltage);
-        
-        let targetAfr = 14.7;
-        let crackleActive = false;
-        if (newThrottle > 80) targetAfr = tune.afrTarget;
-        else if (newThrottle < 5 && effectiveRpm > 3000 && tune.crackleIntensity > 5) {
-          targetAfr = 12.0 - (tune.crackleIntensity / 100);
-          crackleActive = true;
-          if (Math.random() > 0.8) {
-            window.dispatchEvent(new CustomEvent('can-bus-tx', { 
-               detail: { cmd: `POP_CRACKLE_IGN_RETARD: -18deg`, timestamp: Date.now() } 
-            }));
+        setTelemetry(prev => {
+          const mapKpa = results.MAP !== undefined && results.MAP !== null ? results.MAP : prev.mapKpa;
+          const boost = mapKpa !== null ? TuningLogic.calculateBoostPsi(mapKpa, baroKpaRef.current) : null;
+          const lambda = results.O2_S1_LAMBDA;
+          const afr = (lambda !== undefined && lambda !== null) ? estimateAfrFromLambda(lambda) : prev.afr;
+          const speed = results.SPEED !== undefined && results.SPEED !== null ? results.SPEED : prev.speed;
+
+          // Real 0-100km/h timer derived from actual speed PID transitions.
+          let zeroToSixty = prev.zeroToSixty;
+          if (speed !== null) {
+            if (speed <= 2) {
+              zeroToSixtyStartRef.current = null;
+              zeroToSixty = null;
+            } else if (zeroToSixtyStartRef.current === null && (prev.speed === null || prev.speed <= 2)) {
+              zeroToSixtyStartRef.current = Date.now();
+            } else if (zeroToSixtyStartRef.current !== null && speed >= 100 && (prev.speed === null || prev.speed < 100)) {
+              zeroToSixty = (Date.now() - zeroToSixtyStartRef.current) / 1000;
+              zeroToSixtyStartRef.current = null;
+            }
           }
+
+          const newData: Telemetry = {
+            ...prev,
+            rpm: results.RPM ?? prev.rpm,
+            mapKpa,
+            boost,
+            afr,
+            coolantTemp: results.COOLANT_TEMP ?? prev.coolantTemp,
+            iat: results.IAT ?? prev.iat,
+            throttle: results.THROTTLE ?? prev.throttle,
+            speed,
+            stft: results.STFT_B1 ?? prev.stft,
+            ltft: results.LTFT_B1 ?? prev.ltft,
+            moduleVoltage: results.MODULE_VOLTAGE ?? prev.moduleVoltage,
+            timingAdvance: results.TIMING_ADVANCE ?? prev.timingAdvance,
+            engineLoad: results.ENGINE_LOAD ?? prev.engineLoad,
+            zeroToSixty,
+            timestamp: Date.now(),
+          };
+
+          if (isRecordingRef.current) {
+            setLogs(prevLogs => [...prevLogs, newData].slice(-1000));
+          }
+
+          return newData;
+        });
+      }
+    };
+
+    pollLoop();
+    return () => { cancelled = true; };
+  }, [isConnected]);
+
+  // Real phone accelerometer G-force. Requires an explicit user gesture on
+  // iOS (DeviceMotionEvent.requestPermission); Android Chrome needs no
+  // permission prompt. Reads the device's actual linear acceleration —
+  // never fabricated — and stays null until the user opts in.
+  const enableMotion = async () => {
+    setMotionError(null);
+    const DME = (window as any).DeviceMotionEvent;
+    if (!DME) {
+      setMotionError('DeviceMotion API not available on this device/browser.');
+      return;
+    }
+    if (typeof DME.requestPermission === 'function') {
+      try {
+        const result = await DME.requestPermission();
+        if (result !== 'granted') {
+          setMotionError('Motion sensor permission denied.');
+          return;
         }
+      } catch {
+        setMotionError('Motion sensor permission request failed.');
+        return;
+      }
+    }
+    setMotionEnabled(true);
+  };
 
-        const newData: Telemetry = {
-          ...prev,
-          rpm: effectiveRpm,
-          boost: actualBoost,
-          afr: prev.afr + (targetAfr - prev.afr) * 0.1,
-          throttle: newThrottle,
-          speed: Math.max(0, newSpeed),
-          knock: (effectiveRpm > 5000 && !crackleActive) ? Math.random() * 0.5 : 0,
-          timestamp: Date.now()
-        };
-
-        if (isRecording) {
-          setLogs(prevLogs => [...prevLogs, newData].slice(-1000));
-        }
-
-        return newData;
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [isConnected, tune, isRecording, currentProfile]);
+  useEffect(() => {
+    if (!motionEnabled) return;
+    const handleMotion = (e: DeviceMotionEvent) => {
+      const a = e.acceleration;
+      if (!a || a.x === null || a.y === null || a.z === null) return;
+      const magnitudeG = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z) / 9.80665;
+      setTelemetry(prev => ({ ...prev, gForce: magnitudeG }));
+    };
+    window.addEventListener('devicemotion', handleMotion);
+    return () => window.removeEventListener('devicemotion', handleMotion);
+  }, [motionEnabled]);
 
   const handleConnect = async () => {
     setIsConnecting(true);
-    setConnectStep(`INITIALIZING ${currentProfile.ecuType}...`);
-    const steps = ['SCANNING BUS...', 'VERIFYING VIN...', 'PROTOCOL_HANDSHAKE...', 'LINK_SUCCESS'];
-    for (const s of steps) {
-      setConnectStep(s);
-      await new Promise(r => setTimeout(r, 600));
-    }
-    const success = await hardware.connect();
-    if (success) setIsConnected(true);
+    setConnectError(null);
+    const result = await hardware.connect();
     setIsConnecting(false);
+    if (result.success) {
+      setIsConnected(true);
+    } else {
+      setConnectError(result.message);
+    }
+  };
+
+  const handleDisconnect = () => {
+    hardware.disconnect();
+    setIsConnected(false);
+    setTelemetry(BLANK_TELEMETRY);
+    zeroToSixtyStartRef.current = null;
+    baroKpaRef.current = null;
   };
 
   const NavItem: React.FC<{ tab: AppTab; icon: string; label: string }> = ({ tab, icon, label }) => (
@@ -128,19 +190,27 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-4xl font-black uppercase tracking-tighter mb-4 text-white italic">UniMix<span className="text-purple-600">Pro</span></h1>
           <p className="text-gray-500 mb-8 text-[9px] font-mono tracking-[0.2em] uppercase italic">
-            {isConnecting ? connectStep : 'v.5.5.0 // Legendary Protocol Suite'}
+            {isConnecting ? 'Requesting Bluetooth OBD-II adapter…' : 'Real OBD-II Interface // No Simulation'}
           </p>
+          {connectError && (
+            <div className="mb-8 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-left">
+              <p className="text-[9px] font-mono text-red-400 leading-relaxed">{connectError}</p>
+            </div>
+          )}
           <div className="space-y-6 mb-10 text-left">
             <div>
-              <label className="text-[8px] font-black uppercase tracking-widest text-gray-700 ml-1 mb-2 block">Architecture Select</label>
+              <label className="text-[8px] font-black uppercase tracking-widest text-gray-700 ml-1 mb-2 block">Vehicle Profile (for AI context only)</label>
               <select className="w-full bg-black border border-gray-800 p-4 rounded-xl text-white font-mono text-sm outline-none focus:border-purple-600" value={currentProfile.id} onChange={(e) => setCurrentProfile(VEHICLE_PROFILES.find(p => p.id === e.target.value) || VEHICLE_PROFILES[0])}>
                 {VEHICLE_PROFILES.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
           </div>
           <button onClick={handleConnect} disabled={isConnecting} className="w-full py-5 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black text-lg uppercase tracking-widest text-white shadow-xl transition-all active:scale-95">
-            {isConnecting ? <i className="fas fa-sync fa-spin"></i> : 'Initialize Tuner Link'}
+            {isConnecting ? <i className="fas fa-sync fa-spin"></i> : 'Connect Bluetooth ELM327'}
           </button>
+          <p className="text-[8px] text-gray-700 mt-6 font-mono uppercase tracking-widest leading-relaxed">
+            Requires a real ELM327 Bluetooth LE OBD-II adapter plugged into the car and Chrome/Edge on Android.
+          </p>
         </div>
       </div>
     );
@@ -171,12 +241,12 @@ const App: React.FC = () => {
                <span className="text-[10px] font-mono font-black text-purple-400 uppercase italic">{currentProfile.ecuType}</span>
              </div>
              <div className="flex flex-col">
-               <span className="text-[7px] font-black text-gray-700 tracking-widest uppercase">VIN_REF</span>
-               <span className="text-[10px] font-mono font-black text-emerald-400 uppercase italic">{currentProfile.vinPrefix}XXXXXX</span>
+               <span className="text-[7px] font-black text-gray-700 tracking-widest uppercase">Protocol</span>
+               <span className="text-[10px] font-mono font-black text-emerald-400 uppercase italic">{hardware.getProtocolName()}</span>
              </div>
            </div>
            <div className="flex items-center gap-4">
-             <span className={`text-[9px] font-black animate-pulse ${hardware.getLinkStatus() === 'SIMULATED_LINK' ? 'text-orange-500' : 'text-emerald-500'}`}>
+             <span className="text-[9px] font-black animate-pulse text-emerald-500">
                {hardware.getLinkStatus()}
              </span>
              <div className="w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center">
@@ -185,34 +255,37 @@ const App: React.FC = () => {
            </div>
         </header>
         <div className="flex-1 overflow-y-auto bg-grid-layout no-scrollbar">
-          {activeTab === 'dashboard' && <Dashboard telemetry={telemetry} />}
+          {activeTab === 'dashboard' && <Dashboard telemetry={telemetry} profile={currentProfile} />}
           {activeTab === 'tune' && (
-            <TuneEditor 
-              settings={tune} 
-              onUpdate={setTune} 
+            <TuneEditor
+              settings={tune}
+              onUpdate={setTune}
               onOptimize={() => {
                 setIsOptimizing(true);
                 setTimeout(() => {
                   setTune(prev => ({...prev, ...TuningLogic.optimizeLocally(logs, tune, currentProfile)}));
                   setIsOptimizing(false);
                 }, 1000);
-              }} 
-              isOptimizing={isOptimizing} 
+              }}
+              isOptimizing={isOptimizing}
               currentProfile={currentProfile}
               logs={logs}
             />
           )}
           {activeTab === 'logs' && <DataLogger logs={logs} isRecording={isRecording} onToggleRecording={() => setIsRecording(!isRecording)} onClear={() => setLogs([])} />}
-          {activeTab === 'maps' && <MapViewer3D currentRpm={telemetry.rpm} currentLoad={telemetry.throttle} profileId={currentProfile.id} />}
-          {activeTab === 'files' && <FileManager />}
+          {activeTab === 'maps' && <MapViewer3D currentRpm={telemetry.rpm ?? 0} currentLoad={telemetry.throttle ?? 0} profileId={currentProfile.id} />}
+          {activeTab === 'files' && <FileManager tune={tune} ecuType={currentProfile.ecuType} onLoadTune={setTune} />}
           {activeTab === 'dtc' && <ECUReader />}
           {activeTab === 'settings' && (
-            <Settings 
-              currentProfile={currentProfile} 
-              setProfile={setCurrentProfile} 
-              onDisconnect={() => setIsConnected(false)} 
+            <Settings
+              currentProfile={currentProfile}
+              setProfile={setCurrentProfile}
+              onDisconnect={handleDisconnect}
               chipType={tune.chipType}
               onChipChange={(chip: HardwareChip) => setTune(prev => ({...prev, chipType: chip}))}
+              motionEnabled={motionEnabled}
+              motionError={motionError}
+              onEnableMotion={enableMotion}
             />
           )}
         </div>

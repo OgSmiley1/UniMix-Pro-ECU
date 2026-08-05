@@ -1,11 +1,52 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import Gauge from './Gauge';
-import { Telemetry } from '../types';
+import { Telemetry, VehicleProfile } from '../types';
+import { evaluateSafety, SafetyAlert } from '../services/safetyMonitor';
 
 interface DashboardProps {
   telemetry: Telemetry;
+  profile: VehicleProfile;
 }
+
+const ALERT_STYLES: Record<SafetyAlert['severity'], { border: string; bg: string; text: string; icon: string }> = {
+  critical: { border: 'border-red-500/50', bg: 'bg-red-500/10', text: 'text-red-400', icon: 'fa-triangle-exclamation' },
+  warning: { border: 'border-amber-500/40', bg: 'bg-amber-500/5', text: 'text-amber-400', icon: 'fa-circle-exclamation' },
+  info: { border: 'border-blue-500/30', bg: 'bg-blue-500/5', text: 'text-blue-400', icon: 'fa-circle-info' },
+};
+
+const SafetyBanner: React.FC<{ alerts: SafetyAlert[]; hasLiveData: boolean }> = ({ alerts, hasLiveData }) => {
+  if (!hasLiveData) return null;
+
+  if (alerts.length === 0) {
+    return (
+      <div className="mx-4 md:mx-10 mt-4 px-5 py-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 flex items-center gap-3">
+        <i className="fas fa-shield-check text-emerald-500 text-xs"></i>
+        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">All monitored parameters nominal</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-4 md:mx-10 mt-4 space-y-2">
+      {alerts.map(alert => {
+        const style = ALERT_STYLES[alert.severity];
+        return (
+          <div
+            key={alert.id}
+            className={`px-5 py-3 rounded-2xl border ${style.border} ${style.bg} flex items-start gap-3 ${alert.severity === 'critical' ? 'animate-pulse' : ''}`}
+          >
+            <i className={`fas ${style.icon} ${style.text} text-xs mt-0.5`}></i>
+            <div>
+              <span className={`text-[8px] font-black uppercase tracking-[0.2em] ${style.text} block mb-0.5`}>{alert.severity}</span>
+              <span className="text-xs text-gray-300 leading-relaxed">{alert.message}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 // A subtle value component that pulses whenever the value changes
 const LiveValue: React.FC<{ value: string | number; colorClass?: string }> = ({ value, colorClass = "text-white" }) => {
@@ -28,12 +69,18 @@ const LiveValue: React.FC<{ value: string | number; colorClass?: string }> = ({ 
   );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
-  const getAfrColor = (afr: number) => {
-    if (afr < 11.5) return "#ef4444"; 
-    if (afr > 15.5) return "#f59e0b"; 
-    return "#10b981"; 
+const fmt = (v: number | null, digits = 0) => v === null ? 'N/A' : v.toFixed(digits);
+
+const Dashboard: React.FC<DashboardProps> = ({ telemetry, profile }) => {
+  const getAfrColor = (afr: number | null) => {
+    if (afr === null) return "#3f3f46";
+    if (afr < 11.5) return "#ef4444";
+    if (afr > 15.5) return "#f59e0b";
+    return "#10b981";
   };
+
+  const hasLiveData = telemetry.rpm !== null || telemetry.speed !== null || telemetry.coolantTemp !== null || telemetry.throttle !== null;
+  const alerts = useMemo(() => evaluateSafety(telemetry, profile), [telemetry, profile]);
 
   return (
     <div className="flex flex-col h-full bg-[#020202] pb-24 md:pb-8 font-sans overflow-y-auto no-scrollbar scanline relative">
@@ -41,6 +88,8 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
       <div className="w-full h-0.5 bg-gray-900/20 relative overflow-hidden">
         <div className="absolute top-0 left-0 h-full w-24 bg-gradient-to-r from-transparent via-purple-500 to-transparent animate-[scanline_2s_linear_infinite]"></div>
       </div>
+
+      <SafetyBanner alerts={alerts} hasLiveData={hasLiveData} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8 p-4 md:p-10 z-10">
         <div className="flex justify-center transform hover:scale-105 transition-all duration-500">
@@ -66,13 +115,13 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
           />
         </div>
         <div className="flex justify-center transform hover:scale-105 transition-all duration-500">
-          <Gauge 
-            value={telemetry.afr} 
-            min={9} 
-            max={18} 
-            label="Wideband AFR" 
-            unit="AFR" 
-            color={getAfrColor(telemetry.afr)} 
+          <Gauge
+            value={telemetry.afr}
+            min={9}
+            max={18}
+            label="Est. AFR (O2 λ)"
+            unit="AFR"
+            color={getAfrColor(telemetry.afr)}
             size={window.innerWidth < 768 ? 160 : 240}
           />
         </div>
@@ -83,7 +132,7 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
             max={140} 
             label="ECT Sensor" 
             unit="°C" 
-            color={telemetry.coolantTemp > 105 ? "#ef4444" : "#f59e0b"} 
+            color={telemetry.coolantTemp !== null && telemetry.coolantTemp > 105 ? "#ef4444" : "#f59e0b"}
             size={window.innerWidth < 768 ? 160 : 240}
           />
         </div>
@@ -91,21 +140,21 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-5 px-4 md:px-10 z-10">
         {[
-          { label: 'Oil Pressure', value: telemetry.oilPressure, unit: 'PSI', color: 'text-cyan-400' },
-          { label: 'Duty Cycle', value: telemetry.injDutyCycle, unit: '%', color: 'text-purple-400' },
-          { label: 'Fuel Press.', value: telemetry.fuelPressure, unit: 'PSI', color: 'text-emerald-400' },
+          { label: 'Engine Load', value: telemetry.engineLoad, unit: '%', color: 'text-cyan-400' },
+          { label: 'STFT B1', value: telemetry.stft, unit: '%', color: 'text-purple-400' },
+          { label: 'LTFT B1', value: telemetry.ltft, unit: '%', color: 'text-emerald-400' },
           { label: 'Air Intake', value: telemetry.iat, unit: '°C', color: 'text-amber-400' },
-          { label: 'MAP Volts', value: telemetry.mapVoltage, unit: 'V', color: 'text-blue-300' },
-          { label: 'Ign. Timing', value: 15 + (telemetry.throttle / 5), unit: 'BTDC', color: 'text-orange-400' },
+          { label: 'Module Volts', value: telemetry.moduleVoltage, unit: 'V', color: 'text-blue-300' },
+          { label: 'Ign. Timing', value: telemetry.timingAdvance, unit: 'BTDC', color: 'text-orange-400' },
         ].map((stat, i) => (
           <div key={i} className="glass p-5 rounded-[2rem] border border-white/5 shadow-2xl relative overflow-hidden group">
             <div className="flex justify-between items-start mb-2">
               <p className="text-[8px] text-gray-700 uppercase font-black tracking-[0.2em]">{stat.label}</p>
-              <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse opacity-50"></div>
+              <div className={`w-1 h-1 rounded-full animate-pulse opacity-50 ${stat.value !== null ? 'bg-emerald-500' : 'bg-gray-700'}`}></div>
             </div>
             <div className="flex items-baseline gap-2">
-              <p className={`text-2xl font-mono font-black ${stat.color}`}>
-                <LiveValue value={stat.value.toFixed(stat.unit === '%' ? 1 : 0)} colorClass={stat.color} />
+              <p className={`text-2xl font-mono font-black ${stat.value !== null ? stat.color : 'text-gray-700'}`}>
+                <LiveValue value={fmt(stat.value, stat.unit === '%' ? 1 : 0)} colorClass={stat.value !== null ? stat.color : 'text-gray-700'} />
               </p>
               <span className="text-[10px] font-bold text-gray-800 uppercase">{stat.unit}</span>
             </div>
@@ -117,17 +166,15 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
         <div className="glass p-6 rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-6">
              <div className="w-16 h-16 rounded-2xl bg-black/40 border border-white/5 flex items-center justify-center relative overflow-hidden">
-               <i className={`fas fa-bolt text-2xl ${telemetry.knock > 1.2 ? 'text-red-500 animate-pulse' : 'text-emerald-500 opacity-20'}`}></i>
-               {/* Live Signal Ripple */}
-               <div className="absolute inset-0 bg-emerald-500/5 animate-ping"></div>
+               <i className="fas fa-bolt text-2xl text-gray-600 opacity-40"></i>
              </div>
              <div>
                <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1 flex items-center gap-2">
-                 Safety Relay Status
-                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                 Knock Sensor
+                 <span className="w-1.5 h-1.5 bg-gray-600 rounded-full"></span>
                </h4>
-               <p className={`text-sm font-mono font-black ${telemetry.knock > 1.2 ? 'text-red-500' : 'text-emerald-400'}`}>
-                 {telemetry.knock > 1.2 ? `KNOCK DETECTED // RETARDING TIMING` : 'SYSTEM NOMINAL // STREAMING LIVE'}
+               <p className="text-sm font-mono font-black text-gray-500">
+                 N/A — No standard OBD-II PID for knock retard on this ECU
                </p>
              </div>
           </div>
@@ -135,7 +182,7 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
              <div className="text-right">
                <p className="text-[8px] font-black uppercase text-gray-700 tracking-tighter">0-100 KM/H</p>
                <p className="text-3xl font-mono font-black text-white italic">
-                 <LiveValue value={telemetry.zeroToSixty ? telemetry.zeroToSixty.toFixed(2) : '--.--'} />
+                 <LiveValue value={telemetry.zeroToSixty !== null ? telemetry.zeroToSixty.toFixed(2) : '--.--'} />
                  <span className="text-[12px] ml-1">S</span>
                </p>
              </div>
@@ -143,8 +190,16 @@ const Dashboard: React.FC<DashboardProps> = ({ telemetry }) => {
              <div className="text-right">
                <p className="text-[8px] font-black uppercase text-gray-700 tracking-tighter">Velocity</p>
                <p className="text-3xl font-mono font-black text-white italic">
-                 <LiveValue value={telemetry.speed.toFixed(0)} />
+                 <LiveValue value={fmt(telemetry.speed, 0)} />
                  <span className="text-[12px] ml-1">KM/H</span>
+               </p>
+             </div>
+             <div className="w-px h-12 bg-gray-900 mx-2"></div>
+             <div className="text-right">
+               <p className="text-[8px] font-black uppercase text-gray-700 tracking-tighter">G-Force</p>
+               <p className="text-3xl font-mono font-black text-white italic">
+                 <LiveValue value={fmt(telemetry.gForce, 2)} />
+                 <span className="text-[12px] ml-1">G</span>
                </p>
              </div>
           </div>

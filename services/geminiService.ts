@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { Telemetry, TuneSettings, VehicleProfile } from "../types";
+import { buildKnowledgePromptContext } from "./tuningKnowledge";
 
 // Initialize Gemini API client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -25,24 +26,29 @@ export const optimizeTuneWithAI = async (
   logs: Telemetry[]
 ): Promise<TuningAISuggestion | null> => {
   try {
-    const logSummary = logs.slice(-50).map(l => 
-      `RPM: ${l.rpm.toFixed(0)}, Boost: ${l.boost.toFixed(1)}, AFR: ${l.afr.toFixed(2)}, Knock: ${l.knock.toFixed(2)}`
+    const fmt = (v: number | null, digits: number) => v === null ? 'N/A' : v.toFixed(digits);
+    const logSummary = logs.slice(-50).map(l =>
+      `RPM: ${fmt(l.rpm, 0)}, Boost: ${fmt(l.boost, 1)}, AFR: ${fmt(l.afr, 2)}, Knock: ${fmt(l.knock, 2)}`
     ).join('\n');
 
     const prompt = `
       Act as a world-class ECU calibrator for ${profile.name} (${profile.ecuType}).
-      Engine: ${profile.engine}, Induction: ${profile.induction}.
-      
+      Engine: ${profile.engine}, Induction: ${profile.induction}, Region: ${profile.region || 'N/A'}.
+      Platform-specific context: ${profile.notes || 'No specific notes for this platform.'}
+      Manufacturer-informed baseline: max boost ${profile.maxBoost}PSI, safe AFR ~${profile.safeAFR}, fuel: ${profile.fuelType}.
+
       Current Tune: AFR Target: ${currentTune.afrTarget}, Boost: ${currentTune.boostLimit}PSI, Timing: ${currentTune.ignitionOffset}deg.
-      
-      Recent Telemetry (Last 5 seconds):
+
+      Recent Telemetry (real logged OBD-II data; "N/A" means the PID was unsupported/unread on this vehicle, AFR is estimated from O2 sensor lambda, Knock has no generic OBD-II PID and is always N/A on stock ECUs):
       ${logSummary}
-      
+
+      ${buildKnowledgePromptContext()}
+
       Tasks:
-      1. Suggest optimization for Power vs Safety.
+      1. Suggest optimization for Power vs Safety, weighed specifically against this platform's known weak points (see context above) — not generic advice that would apply to any turbo engine.
       2. Define a "Safe Operating Envelope" (min/max) for Boost, AFR, and Ignition timing specifically for this engine's health.
-      3. Provide a brief 1-sentence engineering insight.
-      
+      3. Provide a brief 1-2 sentence engineering insight that references the platform's actual known failure mode or the current telemetry, not a generic tip.
+
       Return JSON format only.
     `;
 

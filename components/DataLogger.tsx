@@ -19,6 +19,47 @@ interface DataLoggerProps {
   onClear: () => void;
 }
 
+const fmt = (v: number | null, digits: number) => v === null ? 'N/A' : v.toFixed(digits);
+
+// Columns exported to CSV, in order. Keys map to Telemetry fields.
+const CSV_COLUMNS: Array<{ key: keyof Telemetry; label: string }> = [
+  { key: 'timestamp', label: 'timestamp_iso' },
+  { key: 'rpm', label: 'rpm' },
+  { key: 'speed', label: 'speed_kmh' },
+  { key: 'boost', label: 'boost_psi' },
+  { key: 'mapKpa', label: 'map_kpa' },
+  { key: 'afr', label: 'afr_est' },
+  { key: 'coolantTemp', label: 'coolant_c' },
+  { key: 'iat', label: 'iat_c' },
+  { key: 'throttle', label: 'throttle_pct' },
+  { key: 'engineLoad', label: 'engine_load_pct' },
+  { key: 'stft', label: 'stft_pct' },
+  { key: 'ltft', label: 'ltft_pct' },
+  { key: 'timingAdvance', label: 'timing_advance_deg' },
+  { key: 'moduleVoltage', label: 'module_voltage_v' },
+  { key: 'gForce', label: 'g_force' },
+];
+
+const exportCsv = (logs: Telemetry[]) => {
+  if (logs.length === 0) return;
+  const header = CSV_COLUMNS.map(c => c.label).join(',');
+  const rows = logs.map(log =>
+    CSV_COLUMNS.map(c => {
+      const v = log[c.key];
+      if (c.key === 'timestamp') return new Date(v as number).toISOString();
+      return v === null || v === undefined ? '' : v;
+    }).join(',')
+  );
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `unimix-log-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 const DataLogger: React.FC<DataLoggerProps> = ({ logs, isRecording, onToggleRecording, onClear }) => {
   return (
     <div className="p-8 h-full flex flex-col">
@@ -28,7 +69,14 @@ const DataLogger: React.FC<DataLoggerProps> = ({ logs, isRecording, onToggleReco
           <p className="text-gray-500">High-fidelity session recording and analysis.</p>
         </div>
         <div className="flex gap-4">
-          <button 
+          <button
+            onClick={() => exportCsv(logs)}
+            disabled={logs.length === 0}
+            className="px-6 py-2 border border-gray-700 hover:bg-gray-800 rounded-lg font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <i className="fas fa-file-csv mr-2"></i>Export CSV
+          </button>
+          <button
             onClick={onClear}
             className="px-6 py-2 border border-gray-700 hover:bg-gray-800 rounded-lg font-bold transition-all"
           >
@@ -105,11 +153,11 @@ const DataLogger: React.FC<DataLoggerProps> = ({ logs, isRecording, onToggleReco
             {logs.slice(-5).reverse().map((log, i) => (
               <tr key={i} className="border-b border-gray-900 last:border-0">
                 <td className="py-3 text-gray-400">{new Date(log.timestamp).toLocaleTimeString()}</td>
-                <td className="text-red-400">{log.rpm.toFixed(0)}</td>
-                <td className="text-blue-400">{log.boost.toFixed(1)}</td>
-                <td className="text-emerald-400">{log.afr.toFixed(2)}</td>
-                <td className="text-orange-400">{log.coolantTemp.toFixed(1)}</td>
-                <td className={log.knock > 0 ? 'text-red-500 font-bold' : 'text-gray-600'}>{log.knock.toFixed(1)}</td>
+                <td className="text-red-400">{fmt(log.rpm, 0)}</td>
+                <td className="text-blue-400">{fmt(log.boost, 1)}</td>
+                <td className="text-emerald-400">{fmt(log.afr, 2)}</td>
+                <td className="text-orange-400">{fmt(log.coolantTemp, 1)}</td>
+                <td className="text-gray-600">N/A</td>
               </tr>
             ))}
           </tbody>

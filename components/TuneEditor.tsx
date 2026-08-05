@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { TuneSettings, VehicleProfile, Telemetry } from '../types';
 import { INITIAL_TUNE } from '../constants';
 import { optimizeTuneWithAI, TuningAISuggestion } from '../services/geminiService';
+import TuningKnowledge from './TuningKnowledge';
 
 interface TuneEditorProps {
   settings: TuneSettings;
@@ -41,21 +42,27 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
     onUpdate({ ...settings, [key]: value });
   };
 
-  const currentTelemetry = logs[logs.length - 1] || { afr: 14.7, boost: 0, knock: 0 };
+  const currentTelemetry = logs[logs.length - 1];
 
   // Helper to check if a parameter is currently deviating from AI safe ranges
-  const getDeviationStatus = (val: number, range?: [number, number]) => {
-    if (!range) return 'nominal';
+  const getDeviationStatus = (val: number | null | undefined, range?: [number, number]) => {
+    if (val === null || val === undefined || !range) return 'nominal';
     if (val < range[0]) return 'low';
     if (val > range[1]) return 'high';
     return 'nominal';
   };
 
-  const afrStatus = getDeviationStatus(currentTelemetry.afr, aiAdvice?.safeEnvelope?.afr);
-  const boostStatus = getDeviationStatus(currentTelemetry.boost, aiAdvice?.safeEnvelope?.boost);
+  const afrStatus = getDeviationStatus(currentTelemetry?.afr, aiAdvice?.safeEnvelope?.afr);
+  const boostStatus = getDeviationStatus(currentTelemetry?.boost, aiAdvice?.safeEnvelope?.boost);
 
   return (
     <div className="p-8 h-full flex flex-col gap-8 max-w-5xl mx-auto overflow-y-auto pb-24 no-scrollbar relative">
+      <div className="glass p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5">
+        <p className="text-[9px] text-amber-400 font-mono uppercase tracking-widest leading-relaxed">
+          <i className="fas fa-info-circle mr-2"></i>
+          These are recommended targets from real logged telemetry, not live writes. Generic OBD-II can't flash a stock ECU — apply these values through your standalone ECU's own official software (Haltech/Link/MoTeC/etc.), or a licensed reflash tool for your platform.
+        </p>
+      </div>
       {/* AI Advisor Panel */}
       <div className={`glass p-6 rounded-[2rem] border transition-all duration-700 ${aiAdvice ? 'border-blue-500/20 opacity-100' : 'border-gray-800 opacity-50'}`}>
         <div className="flex justify-between items-start mb-2">
@@ -65,7 +72,7 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
              </div>
              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 italic">Live AI Advisor</h3>
           </div>
-          {aiAdvice && <span className="text-[8px] font-mono text-gray-600 uppercase tracking-widest">Confidence: 98.2%</span>}
+          {aiAdvice && <span className="text-[8px] font-mono text-gray-600 uppercase tracking-widest">Gemini Analysis</span>}
         </div>
         <p className="text-xs text-gray-400 italic leading-relaxed">
           {aiAdvice?.reasoning || "Analyzing telemetry stream... waiting for load pull to calibrate safety envelope."}
@@ -174,17 +181,63 @@ const TuneEditor: React.FC<TuneEditorProps> = ({
             </div>
             <span className="text-red-400 font-mono text-2xl font-black">{settings.topSpeedLimit} KM/H</span>
           </div>
-          <input 
-            type="range" min="100" max="450" step="5" 
+          <input
+            type="range" min="100" max="450" step="5"
             value={settings.topSpeedLimit}
             onChange={(e) => handleChange('topSpeedLimit', parseInt(e.target.value))}
             className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-red-500"
           />
         </div>
+
+        {/* Rev Limiter target */}
+        <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
+                <i className="fas fa-gauge text-yellow-500 text-xs"></i>
+              </div>
+              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Rev Limiter</label>
+            </div>
+            <span className="text-yellow-400 font-mono text-2xl font-black">{settings.revLimit} RPM</span>
+          </div>
+          <input
+            type="range" min="5000" max="11000" step="100"
+            value={settings.revLimit}
+            onChange={(e) => handleChange('revLimit', parseInt(e.target.value))}
+            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+          />
+          <p className="text-[8px] text-gray-600 font-mono uppercase tracking-widest leading-relaxed">
+            Recommended fuel/ignition-cut RPM ceiling. Set from the engine's valvetrain and rotating-assembly limits, not peak power — over-revving a stock bottom end is a mechanical failure no tune protects against.
+          </p>
+        </div>
+
+        {/* Overrun Crackle / Popcorn Intensity — planning value, see Tuning Reference below for what this actually requires */}
+        <div className="glass p-8 rounded-[2.5rem] border border-gray-800/50 space-y-6 md:col-span-2">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                <i className="fas fa-fire text-orange-500 text-xs"></i>
+              </div>
+              <label className="font-black uppercase tracking-widest text-[10px] text-gray-400">Overrun Crackle / Popcorn Intensity</label>
+            </div>
+            <span className="text-orange-400 font-mono text-2xl font-black">{settings.crackleIntensity}%</span>
+          </div>
+          <input
+            type="range" min="0" max="100" step="5"
+            value={settings.crackleIntensity}
+            onChange={(e) => handleChange('crackleIntensity', parseInt(e.target.value))}
+            className="w-full h-1.5 bg-gray-900 rounded-lg appearance-none cursor-pointer accent-orange-500"
+          />
+          <p className="text-[8px] text-gray-600 font-mono uppercase tracking-widest leading-relaxed">
+            Target overrun ignition-retard aggressiveness only — not a live control. Requires its own overrun fuel/ignition map, and a straight pipe if the car still runs a cat/DPF. See "Popcorn / Crackle" in the Tuning Reference below before using this on a street car.
+          </p>
+        </div>
       </div>
 
+      <TuningKnowledge profile={currentProfile} />
+
       <div className="flex gap-4">
-        <button 
+        <button
           onClick={onOptimize}
           disabled={isOptimizing}
           className="flex-1 py-5 bg-purple-600 hover:bg-purple-500 rounded-2xl font-black text-[10px] uppercase tracking-[0.3em] transition-all shadow-xl shadow-purple-600/20 text-white"

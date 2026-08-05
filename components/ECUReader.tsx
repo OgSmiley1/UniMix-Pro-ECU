@@ -12,27 +12,20 @@ const ECUReader: React.FC = () => {
   const runScan = async () => {
     setIsScanning(true);
     setResults([]);
-    addLog("Initiating Full System Interrogation...");
-    
-    // Simulate multi-module scan
-    const modules = ['ECM', 'TCM', 'BCM', 'SRS'];
-    for (const mod of modules) {
-      addLog(`Querying ${mod} via CAN-Gateway...`);
-      await new Promise(r => setTimeout(r, 600));
-    }
+    addLog("Sending Mode 03 (Request Stored DTCs)...");
 
     const dtcs = await hardware.readDTCs();
     if (dtcs.length > 0) {
       setResults(dtcs.map(d => ({
-        code: d.split(' - ')[0],
-        desc: d.split(' - ')[1],
+        code: d.code,
+        desc: d.description,
         status: 'Confirmed'
       })));
-      addLog(`${dtcs.length} Faults Found in ECM.`);
+      addLog(`${dtcs.length} fault code(s) returned by ECM.`);
     } else {
-      addLog("No active DTCs found. System Healthy.");
+      addLog("No DTCs returned (or adapter not connected).");
     }
-    
+
     setIsScanning(false);
   };
 
